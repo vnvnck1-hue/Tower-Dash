@@ -17,8 +17,9 @@ const T_END := 0.30
 const ARMS_A := [0.0, 1.88, 3.70]
 const ARMS_L := [1.0, 1.0, 0.62]
 
-## MISFITZ melee palette (face / border / bevel / back blob / shards) — purple fits the dusk tower.
-const MELEE := [Color("f8d2fa"), Color("ff2ee8"), Color("c214d6"), Color("9b2cf0"), Color("7f46dc")]
+## Melee palette (face / border / bevel / back blob / shards) — warm yellow star; the round
+## back blob and shards are no longer drawn (star only).
+const MELEE := [Color("fff6c8"), Color("ffd21e"), Color("e89a00"), Color("ffb300"), Color("e08a00")]
 ## Ranged tone (arrow parry).
 const RANGED := [Color("fff4c4"), Color("ffd21e"), Color("e88a00"), Color("ff9a1e"), Color("e0701e")]
 
@@ -42,7 +43,9 @@ func _ready() -> void:
 
 ## [pos] world point on the enemy surface, [dir] world direction the attack travelled,
 ## [w] target width (0.8-2.2 → clamped), [heavy] slam / multi-kill, [tone] MELEE or RANGED.
-func spawn(pos: Vector3, dir: Vector3, w: float, heavy := false, tone: Array = MELEE) -> void:
+## [follow] optional node the burst sticks to (the hit enemy): the star rides along as the body
+## is launched instead of hanging in the air where the enemy used to be.
+func spawn(pos: Vector3, dir: Vector3, w: float, heavy := false, tone: Array = MELEE, follow: Node3D = null) -> void:
 	if _bursts.size() >= MAX_BURSTS:
 		_bursts.pop_front()
 	w = clamp(w, 0.8, 8.0)
@@ -61,7 +64,7 @@ func spawn(pos: Vector3, dir: Vector3, w: float, heavy := false, tone: Array = M
 	_bursts.append({
 		"pos": pos, "dir": dir.normalized(), "r": r, "t": 0.0, "ts": 1.25 if heavy else 1.0,
 		"heavy": heavy, "tone": tone, "mirror": _rng.randf() < 0.5, "chips": chips, "rays": rays,
-		"shards": [_rng.randf_range(-0.6, 0.6), _rng.randf_range(1.6, 2.6), _rng.randf_range(3.6, 4.8)],
+		"follow": follow, "off": (pos - follow.global_position) if follow != null else Vector3.ZERO,
 	})
 
 
@@ -113,6 +116,10 @@ func _draw_burst(b: Dictionary) -> void:
 	var r: float = b["r"]
 	var tone: Array = b["tone"]
 	var pos: Vector3 = b["pos"]
+	var follow = b["follow"]
+	if follow != null and is_instance_valid(follow):
+		pos = follow.global_position + b["off"]
+		b["pos"] = pos
 	var to_cam: Vector3 = (cam.global_position - pos).normalized()
 	var right: Vector3 = cam.global_basis.x
 	var up: Vector3 = cam.global_basis.y
@@ -142,31 +149,7 @@ func _draw_burst(b: Dictionary) -> void:
 	var face: Color = tone[0]
 	var border: Color = tone[1]
 	var bevel: Color = tone[2]
-	var back: Color = tone[3]
-	var shard: Color = tone[4]
-
-	# --- pop flash disc (white) ---
-	if t < T_POP + 0.02:
-		var fa: float = (1.0 - t / (T_POP + 0.02)) * 0.9
-		_fan(o, _circle(o, right, up, r * 1.3 * s, 10), _lin(Color.WHITE, fa, 1.3))
-
-	# --- back blob (0.012-0.13) then 3 outline shards ---
-	if t >= 0.012 and t < 0.13:
-		var ba: float = 0.82 * (1.0 - smoothstep(0.10, 0.13, t))
-		_fan(o, _circle(o, right, up, r * 1.22 * s, 8), _lin(back, ba))
-	if t >= 0.088:
-		var k: float = (t - 0.088)
-		var sa: float = (1.0 - smoothstep(0.2, 0.30, t)) * 0.95
-		for i in 3:
-			var ang: float = base_rot + b["shards"][i]
-			var dirv := Vector2(cos(ang), sin(ang))
-			var c2: Vector2 = dirv * (r * 1.22 + k * 6.0 * r)
-			var sz: float = r * 0.28
-			var p0: Vector3 = o + right * (c2.x) + up * (c2.y)
-			var p1: Vector3 = p0 + (right * dirv.x + up * dirv.y) * sz
-			var perp := Vector2(-dirv.y, dirv.x)
-			var p2: Vector3 = p0 + (right * perp.x + up * perp.y) * sz * 0.7
-			_tri(p0, p1, p2, _lin(shard, sa))
+	# (the round pop disc, back blob and shards were removed: star only)
 
 	# --- rays (0.015-0.16) ---
 	if t >= 0.015 and t < 0.16:

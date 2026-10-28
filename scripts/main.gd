@@ -79,6 +79,7 @@ const RunnerScript := preload("res://scripts/character.gd")
 const DebugPanelScript := preload("res://scripts/debug_panel.gd")
 const GoblinScript := preload("res://scripts/goblin.gd")
 const HeartsScript := preload("res://scripts/hearts_hud.gd")
+const ShurikenHudScript := preload("res://scripts/shuriken_hud.gd")
 const HitBurstScript := preload("res://scripts/hit_burst.gd")
 var _hb: MeshInstance3D
 # ---- combat / lives ----
@@ -111,6 +112,7 @@ var _near_cull: Array[Node3D] = []
 const NEAR_CULL_Z := 17.0
 var _demo_i := 0
 var _demo_gap := 0.0
+var _mouse_demo_dir := Vector2.ZERO   # --anim=mouse: last cursor direction used (for the log)
 
 
 func _ready() -> void:
@@ -740,13 +742,13 @@ func _build_character() -> void:
 	add_child(runner)
 	runner.slam_hit.connect(func() -> void:
 		_shake = 0.5
-		var at := runner.global_position + Vector3(2.2, 0.2, 0.0)
-		_shockwave(at, Color("ff3cbd"), 4.4, 0.25, 0.14)
-		_burst_particles(at, 14, Color("ff3cbd"), 0.22, 7.0, 10.0, true, Vector3(0, 1, 0))
+		var at := runner.global_position + Vector3(2.2 * runner.facing, 0.2, 0.0)
+		_shockwave(at, Color("3cb8ff"), 4.4, 0.25, 0.14)
+		_burst_particles(at, 14, Color("3cb8ff"), 0.22, 7.0, 10.0, true, Vector3(0, 1, 0))
 		if _hitstop <= 0.0:
 			_hitstop = 0.016
 		for g in goblins.duplicate():
-			var d: float = g.k_abs - progress
+			var d: float = (g.k_abs - progress) * runner.facing
 			if d >= -1.0 and d <= 5.5:
 				_kill_goblin(g, true))
 	runner.burst.connect(func(peak: float, dur: float) -> void:
@@ -792,10 +794,11 @@ func _build_character() -> void:
 	_panel.add_group("blur", "Dash blur", BLUR_PRESETS, blur_preset)
 	_panel.add_group("ease", "Animation easing", RunnerCharacter.EASE_PRESETS, 0)
 	_panel.add_group("distort", "Lens distortion", ["Off", "Wide barrel", "Dynamic fisheye"], distort_preset)
+	_panel.add_group("draw", "Draw slash (lunge / lift / aim)", RunnerCharacter.DRAW_PRESETS, 1)
 	_panel.changed.connect(_on_preset_changed)
 	_panel.load_saved()
 	var help := Label.new()
-	help.text = "A/D speed   Space jump (x2)   J attack (air ok)   S/Down + J in air = slam   K/Shift dash (air ok)   F1-3 cam  1-3 blur  4-6 ease  7-9 lens"
+	help.text = "A/D move (turn back = walk down)   Space jump (x2)   J / LMB draw-slash toward mouse (air ok)   RMB shuriken (3, +1/s)   S/Down + J in air = slam   K/Shift dash   F11 fullscreen   F1-3 cam  1-3 blur  4-6 ease  7-9 lens"
 	help.add_theme_font_size_override("font_size", 12)
 	help.add_theme_color_override("font_color", Color(0.7, 0.7, 0.85, 0.8))
 	_panel.get_node("PanelContainer/VB").add_child(help)
@@ -807,18 +810,31 @@ func _on_preset_changed(group: String, index: int) -> void:
 		"blur": blur_preset = index
 		"ease": runner.ease_preset = index
 		"distort": distort_preset = index
+		"draw": runner.set_draw_preset(index)
 
 
 func _update_hud() -> void:
 	pass
 
 
+## F11 (or Alt+Enter): borderless fullscreen <-> window. The project starts fullscreen
+## (project.godot display/window/size/mode); the viewport stretch keeps the 3:2 frame.
+func _toggle_fullscreen() -> void:
+	var fs := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN \
+		or DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if fs else DisplayServer.WINDOW_MODE_FULLSCREEN)
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ENTER and event.alt_pressed:
+		_toggle_fullscreen()
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_F1: _panel.set_value("cam", 0)
 			KEY_F2: _panel.set_value("cam", 1)
 			KEY_F3: _panel.set_value("cam", 2)
+			KEY_F11: _toggle_fullscreen()
 			KEY_1: _panel.set_value("blur", 0)
 			KEY_2: _panel.set_value("blur", 1)
 			KEY_3: _panel.set_value("blur", 2)
@@ -828,6 +844,99 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_7: _panel.set_value("distort", 0)
 			KEY_8: _panel.set_value("distort", 1)
 			KEY_9: _panel.set_value("distort", 2)
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		_throw_shuriken()
+
+
+# ---------------------------------------------------------------- shuriken (right click)
+## Up to 3 charges, one regained every second. Thrown from the runner's hand toward the mouse
+## cursor (screen direction turned into a camera-plane world direction), spinning; kills the
+## first goblin it touches.
+const SHURIKEN_MAX := 3
+const SHURIKEN_RECHARGE := 1.0
+const SHURIKEN_SPEED := 42.0
+var shuriken_charges := 3
+var _shuriken_recharge := 0.0
+var _shurikens: Array = []        # [{node, vel, t}]
+var _shuriken_hud: Control
+var _shuriken_mesh: ArrayMesh
+
+
+func _shuriken_mesh_build() -> ArrayMesh:
+	# flat 4-point star: two thin crossed blades plus a small hub, in the local XY plane
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var steel := Color("d8e4f4")
+	var dark := Color("2a3340")
+	for i in 4:
+		var a0: float = TAU * i / 4.0
+		var a1: float = a0 + TAU / 8.0
+		var am: float = a0 - TAU / 8.0
+		var tip := Vector3(cos(a0), sin(a0), 0.0) * 0.55
+		var l := Vector3(cos(a1), sin(a1), 0.0) * 0.14
+		var r := Vector3(cos(am), sin(am), 0.0) * 0.14
+		for z in [0.025, -0.025]:
+			var n := Vector3(0, 0, 1.0 if z > 0.0 else -1.0)
+			var pts := [Vector3(0, 0, z), l + Vector3(0, 0, z), tip + Vector3(0, 0, z), r + Vector3(0, 0, z)]
+			MeshBuilder.quad(st, pts, n, [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)], [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)], [dark, steel, steel, steel])
+	return st.commit()
+
+
+func _throw_shuriken() -> void:
+	if runner == null or shuriken_charges <= 0 or runner.action in ["hang", "recover"]:
+		return
+	shuriken_charges -= 1
+	if _shuriken_hud != null:
+		_shuriken_hud.set_count(shuriken_charges)
+	if _shuriken_mesh == null:
+		_shuriken_mesh = _shuriken_mesh_build()
+	var hand: Vector3 = runner.global_position + Vector3(0.6, 1.6 * runner.scale.y, 0.4)
+	# screen direction runner -> cursor, mapped onto the camera plane
+	var sp: Vector2 = cam.unproject_position(hand)
+	var d2: Vector2 = get_viewport().get_mouse_position() - sp
+	if d2.length() < 4.0:
+		d2 = Vector2(1.0, 0.0)
+	d2 = d2.normalized()
+	var dir: Vector3 = (cam.global_basis.x * d2.x - cam.global_basis.y * d2.y).normalized()
+	var mi := MeshInstance3D.new()
+	mi.mesh = _shuriken_mesh
+	mi.material_override = flat_mat(Color("d8e4f4"), Color("4a5668"), 0.02)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	mi.global_position = hand
+	mi.look_at(hand + cam.global_basis.z, Vector3.UP)   # blade plane faces the camera
+	_shurikens.append({"node": mi, "vel": dir * SHURIKEN_SPEED, "t": 0.0})
+	_bursts.append([0.0, 1.15, 0.15])
+	_floor_disc(runner.global_position, 2.2, Color("3cb8ff"), 0.08, 0.15)
+
+
+func _update_shuriken(delta: float) -> void:
+	if shuriken_charges < SHURIKEN_MAX:
+		_shuriken_recharge += delta
+		if _shuriken_recharge >= SHURIKEN_RECHARGE:
+			_shuriken_recharge -= SHURIKEN_RECHARGE
+			shuriken_charges += 1
+			if _shuriken_hud != null:
+				_shuriken_hud.set_count(shuriken_charges)
+	else:
+		_shuriken_recharge = 0.0
+	if _shuriken_hud != null:
+		_shuriken_hud.set_progress(_shuriken_recharge / SHURIKEN_RECHARGE if shuriken_charges < SHURIKEN_MAX else 0.0)
+	for s in _shurikens.duplicate():
+		var node: Node3D = s["node"]
+		s["t"] += delta
+		node.global_position += s["vel"] * delta
+		node.rotate_object_local(Vector3(0, 0, 1), delta * 30.0)
+		var hit := false
+		for g in goblins.duplicate():
+			var centre: Vector3 = g.global_position + Vector3(0.0, 0.62 * g.scale.y, 0.0)
+			if centre.distance_to(node.global_position) <= 0.9 + 0.5 * g.scale.x:
+				_kill_goblin(g)
+				hit = true
+				break
+		if hit or s["t"] > 1.2 or node.global_position.distance_to(runner.global_position) > 70.0:
+			_shurikens.erase(s)
+			node.queue_free()
 
 
 # ---------------------------------------------------------------- enemies, arrows, lives
@@ -839,6 +948,9 @@ func _build_combat() -> void:
 	_hearts = HeartsScript.new()
 	_hearts.position = Vector2(get_viewport().get_visible_rect().size.x - 230, 14)
 	layer.add_child(_hearts)
+	_shuriken_hud = ShurikenHudScript.new()
+	_shuriken_hud.position = Vector2(get_viewport().get_visible_rect().size.x - 230, 76)
+	layer.add_child(_shuriken_hud)
 	_banner_label = Label.new()
 	_banner_label.add_theme_font_size_override("font_size", 46)
 	_banner_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.5))
@@ -848,6 +960,20 @@ func _build_combat() -> void:
 	_banner_label.position = Vector2(get_viewport().get_visible_rect().size.x * 0.5 - 160, 120)
 	_banner_label.visible = false
 	layer.add_child(_banner_label)
+	# the viewport widens/narrows with the window (stretch aspect "expand"): keep the HUD pinned
+	# to the right edge / centre whenever its size changes (fullscreen toggle, monitor ratio)
+	get_viewport().size_changed.connect(_layout_hud)
+	_layout_hud()
+
+
+func _layout_hud() -> void:
+	var w: float = get_viewport().get_visible_rect().size.x
+	if _hearts != null:
+		_hearts.position = Vector2(w - 230, 14)
+	if _shuriken_hud != null:
+		_shuriken_hud.position = Vector2(w - 230, 76)
+	if _banner_label != null:
+		_banner_label.position = Vector2(w * 0.5 - 160, 120)
 	runner.action_changed.connect(_on_runner_action)
 	_hb = HitBurstScript.new()
 	add_child(_hb)
@@ -857,7 +983,7 @@ func _build_combat() -> void:
 ## scale), fading over 0.2 s.
 func _on_runner_action(a: String) -> void:
 	if a in ["attack", "attack2", "attack3", "air_attack", "slam"]:
-		_floor_disc(runner.global_position, 3.8, Color("ff3cbd"), 0.10, 0.2)
+		_floor_disc(runner.global_position, 3.8, Color("3cb8ff"), 0.10, 0.2)
 	if a == "slam":
 		_distortion(runner.global_position + Vector3(2.0, 0.5, 0.0), 7.2, 0.32, 1.4)
 
@@ -910,8 +1036,9 @@ func _step_local(k: float, up := 0.0, lateral := 0.0) -> Transform3D:
 	var lane := TOWER_R + STAIR_W * 0.5 + lateral * STAIR_W * 0.36
 	# while moving between steps, stand on the lower tread of the two
 	var pos := Vector3(lane * sin(a), floor(jl) * STEP_H + up, lane * cos(a))
-	# face down the stairs (toward the runner): local +X -> -tangent
-	return Transform3D(Basis(Vector3.UP, a + PI), pos)
+	# face down the stairs (toward the runner): the rig's forward (local -Z) -> -tangent of the
+	# helix, so goblins look along the stairs instead of into the tower wall
+	return Transform3D(Basis(Vector3.UP, a + PI * 0.5), pos)
 
 
 func _spawn_goblin(k: int, kind: String) -> void:
@@ -945,25 +1072,56 @@ func _ok_spawn_step(k: int) -> bool:
 
 
 func _update_spawns() -> void:
-	# mobs: packs of 3-6 goblins crammed into 2-4 consecutive steps with random lateral offsets,
-	# packs 7-12 steps apart, never near a gap
+	# mobs: packs of 2-5 goblins crammed into 2-4 consecutive steps with random lateral offsets,
+	# packs 8.5-13.5 steps apart, never near a gap. Packs are seeded ahead of the runner; the
+	# ones it walks past stay alive for more than a turn below so turning back meets them again.
 	while _spawn_next < progress + STEPS_PER_TURN * 1.2:
 		var k := int(round(_spawn_next))
 		if _ok_spawn_step(k) and _ok_spawn_step(k + 3):
-			var count := _rng.randi_range(3, 6)
-			for i in count:
-				var kk := k + _rng.randf_range(0.0, 3.2)
-				var kind := "archer" if (i == count - 1 and _rng.randf() < 0.6) else "melee"
-				_spawn_goblin_at(kk, kind)
-			_spawn_next += _rng.randf_range(7.0, 12.0)
+			_spawn_pack(k)
+			_spawn_next += _rng.randf_range(8.5, 13.5)
 		else:
 			_spawn_next += 1.0
 
 
+func _spawn_pack(k: int) -> void:
+	var count := _rng.randi_range(2, 5)
+	for i in count:
+		var kk := k + _rng.randf_range(0.0, 3.2)
+		var kind := "archer" if (i == count - 1 and _rng.randf() < 0.6) else "melee"
+		_spawn_goblin_at(kk, kind)
+
+
 func _on_goblin_strike(g: Node3D) -> void:
 	var d: float = g.k_abs - progress
-	if d <= 2.4 and d >= -0.6 and not runner.is_airborne() and runner.invulnerable <= 0.0 and not runner.is_stopped():
+	if d <= 2.4 and d >= -0.6 and not _runner_in_air() and runner.invulnerable <= 0.0 and not runner.is_stopped():
 		_hurt_runner()
+
+
+## Airborne for the enemy rules: an air clip, or a ground attack hop that lifted the runner high.
+func _runner_in_air() -> bool:
+	return runner.is_airborne() or runner.air_height() > 2.0
+
+
+## Katana Zero hit test: the enemy must sit inside the crescent aimed at the cursor — within
+## reach, inside ±70 deg of the aim angle (in the along-stairs / up plane, facing-relative), and
+## not behind the runner. Very close enemies are always caught. The slam keeps its ground AoE.
+func _in_slash(g: Node3D, d: float) -> bool:
+	var df: float = d * runner.facing
+	if runner.action == "slam":
+		return df >= -0.6 and df <= 5.2
+	var centre: Vector3 = g.global_position + Vector3(0.0, 0.62 * g.scale.y, 0.0)
+	var origin: Vector3 = runner.global_position + Vector3(0.0, runner.air_height() * runner.scale.y, 0.0)
+	var rel := Vector2((centre.x - origin.x) * runner.facing, centre.y - origin.y)
+	# the helix curves away from the X axis a few steps out: use the step distance along the
+	# stairs for the horizontal part so range is consistent all the way round
+	rel.x = df * 1.19
+	var dist := rel.length()
+	if dist <= 2.4:
+		return df >= -0.8
+	if dist > 6.4 or df < -0.6:
+		return false
+	return abs(angle_difference(rel.angle(), runner.attack_phi)) <= deg_to_rad(70.0)
 
 
 func _on_goblin_fire(g: Node3D) -> void:
@@ -973,12 +1131,14 @@ func _on_goblin_fire(g: Node3D) -> void:
 	var tip := MeshInstance3D.new()
 	tip.mesh = MeshBuilder.box(Vector3(0.18, 0.1, 0.1))
 	tip.material_override = flat_mat(Color("9aa8c6"), Color("3a4660"), 0.02)
-	tip.position = Vector3(-0.5, 0, 0)
+	tip.position = Vector3(0.5, 0, 0)        # arrow +X = flight direction (down the stairs)
 	a.add_child(tip)
 	world.add_child(a)
-	arrows.append([a, g.k_abs - 1.0])
+	var dir: float = -1.0 if g.k_abs >= progress else 1.0     # toward the runner
+	arrows.append([a, g.k_abs + dir, dir])
 
 
+const PLUNGE_LEN := 0.62   # length of the runner's "plunge" clip (one-floor fall)
 func _hurt_runner() -> void:
 	lives -= 1
 	_hearts.set_lives(max(lives, 0))
@@ -1000,6 +1160,9 @@ var _kill_times: Array = []
 var _slowmo_t := 0.0      # real-time seconds of slow motion left
 var _slowmo_cd := 0.0     # real-time cooldown before another slow-mo may start
 var _splats: Array = []   # blood decals on the tower (oldest removed first)
+var _gib_bone: Material
+var _gib_meat: Material
+var _gib_dark: Material
 
 
 ## Green blood splats sprayed onto the tower wall behind the kill point: several decals of
@@ -1065,14 +1228,29 @@ func _update_fx(delta: float) -> void:
 			_fx.erase(e)
 			continue
 		match e["kind"]:
+			"gib":
+				# ballistic chunk: gravity, tumble, a quick scale pop on the first frames; it keeps
+				# falling past the treads (no collision) until it is well below the camera
+				e["vel"] += Vector3(0, -26.0, 0) * delta
+				node.global_position += e["vel"] * delta
+				node.rotation += e["spin"] * delta
+				var pop: float = lerpf(e["pop"], 1.0, min(e["t"] / 0.12, 1.0))
+				node.scale = Vector3.ONE * pop
+				if node.global_position.y < runner.global_position.y - 30.0:
+					u = 1.0
 			"launch":
 				var eo: float = 1.0 - pow(1.0 - u, 2.2)                      # fast out
 				node.global_position = e["from"].lerp(e["to"], eo) + Vector3(0, sin(u * PI) * e["arc"], 0)
 				node.rotation = e["rot0"] + e["spin"] * u
-				node.scale = node.scale.lerp(Vector3.ONE * e.get("scale", 1.7), min(delta * 18.0, 1.0))
-				# afterimages every 40 ms for the first half of the flight
-				if e["t"] >= e["ghost_t"] and u < 0.55:
-					e["ghost_t"] += 0.04
+				# hit scale tween: squashed flat on impact, springs past normal into a stretch and
+				# settles (damped oscillation) — the punch stays while the flight itself is calmer
+				var st: float = e["t"]
+				var kk: float = exp(-st * 9.0) * cos(st * 28.0) * 0.32
+				var bs: float = e.get("scale", 1.7)
+				node.scale = Vector3(bs * (1.0 + kk), bs * (1.0 - kk * 1.3), bs * (1.0 + kk))
+				# afterimages every 50 ms for the first part of the flight
+				if e["t"] >= e["ghost_t"] and u < 0.4:
+					e["ghost_t"] += 0.05
 					var ghost: Node3D = node.duplicate()
 					add_child(ghost)
 					ghost.global_transform = node.global_transform
@@ -1140,25 +1318,59 @@ func _kill_goblin(g: Node3D, heavy := false) -> void:
 	_kill_times = _kill_times.filter(func(tm): return Time.get_ticks_msec() - tm < 350)
 	if _kill_times.size() >= 3:
 		heavy = true          # multi-kill: heavy burst only, no slow motion
-	# 4) MISFITZ star burst + screen refraction at the hit point (spec §2.1, §4.4)
-	_hb.spawn(at, dir, w, heavy, HitBurstScript.MELEE)
+	# 4) star burst (rides along with the biggest chunk) + screen refraction at the hit point
 	_distortion(at, 2.6 if not heavy else 4.2, 0.22 if not heavy else 0.3, 0.8 if not heavy else 1.2)
-	# 5) goblin bits + green blood on the tower
+	# 5) blood mist + green blood on the tower
 	_burst_particles(at, 10, Color(0.5, 0.65, 0.3), 0.3, 4.0, 9.0, false, dir + Vector3(0, 0.6, 0))
 	_blood_splat(gp.origin + Vector3(0, 1.0, 0))
-	# 6) launch: random direction / power / spin, driven in _update_fx (game time, frozen by hit-stop)
-	world.remove_child(g)
-	add_child(g)
-	g.global_transform = gp
-	g.scale = g.scale * Vector3(1.22, 0.84, 1.22)          # spec §8 squash
-	var ang := _rng.randf_range(-0.15, 1.05)
-	var power := _rng.randf_range(0.55, 1.6)
-	var dist := 34.0 * power
-	var ldir := Vector3(cos(ang), sin(ang), _rng.randf_range(-0.25, 0.35)).normalized()
-	var spin := Vector3(_rng.randf_range(-4.0, 4.0), _rng.randf_range(-3.0, 3.0), _rng.randf_range(-22.0, -8.0) * power)
-	var base_scale: float = g.scale.x / 1.22
-	_fx.append({"kind": "launch", "node": g, "t": 0.0, "dur": clamp(0.42 / power + 0.15, 0.3, 0.8), "from": gp.origin, "to": gp.origin + ldir * dist,
-		"rot0": g.rotation, "spin": spin, "arc": 2.0 + 3.0 * power, "ghost_t": 0.04, "ghosts": [], "scale": base_scale})
+	# 6) the body bursts into bone and meat: chunks are thrown BEHIND the goblin (along the cut),
+	# tumble, fall under gravity past the stairs and drop out of sight down the tower
+	var big := _spawn_gibs(centre, dir, g.scale.x, heavy)
+	_hb.spawn(at, dir, w, heavy, HitBurstScript.MELEE, big)
+	g.queue_free()
+
+
+## Bone (pale, thin) and meat (goblin green) chunks. Returns the largest chunk so the hit star
+## can ride on it. Driven in _update_fx as "gib" (game time, frozen by hit-stop).
+func _spawn_gibs(at: Vector3, dir: Vector3, size: float, heavy: bool) -> Node3D:
+	if _gib_bone == null:
+		# flat two-tone stone-shader materials (lit by the scene lights, not the runner's spot)
+		_gib_bone = flat_mat(Color("f1ecdc"), Color("8a826c"), 0.03)
+		_gib_meat = flat_mat(Color("79c84c"), Color("2f6a1c"), 0.03)
+		_gib_dark = flat_mat(Color("4e8a2a"), Color("1f4512"), 0.03)
+	var n := 11 if heavy else 8
+	var biggest: Node3D = null
+	var biggest_v := 0.0
+	var fly := dir
+	fly.y = 0.0
+	fly = fly.normalized()
+	for i in n:
+		var mi := MeshInstance3D.new()
+		var bone := i % 3 == 0
+		var s: float = size * _rng.randf_range(0.32, 0.6)
+		var box: Vector3
+		if bone:
+			box = Vector3(s * 0.25, s * 1.1, s * 0.25)
+			mi.material_override = _gib_bone
+		else:
+			box = Vector3(s * _rng.randf_range(0.7, 1.2), s * _rng.randf_range(0.5, 0.9), s * _rng.randf_range(0.6, 1.0))
+			mi.material_override = _gib_meat if i % 2 == 0 else _gib_dark
+		mi.mesh = MeshBuilder.box(box)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+		mi.global_position = at + Vector3(_rng.randf_range(-0.3, 0.3), _rng.randf_range(-0.5, 0.6), _rng.randf_range(-0.3, 0.3)) * size
+		mi.rotation = Vector3(_rng.randf_range(0.0, TAU), _rng.randf_range(0.0, TAU), _rng.randf_range(0.0, TAU))
+		# spray: mostly along the cut and away from the runner, fanned ±40 deg, with lift
+		var spread := Vector3(_rng.randf_range(-0.35, 0.35), _rng.randf_range(0.25, 0.9), _rng.randf_range(-0.45, 0.45))
+		var speed: float = _rng.randf_range(7.0, 13.0) * (1.25 if heavy else 1.0)
+		var vel: Vector3 = (fly * _rng.randf_range(0.6, 1.0) + spread).normalized() * speed
+		var vol: float = box.x * box.y * box.z
+		if vol > biggest_v:
+			biggest_v = vol
+			biggest = mi
+		_fx.append({"kind": "gib", "node": mi, "t": 0.0, "dur": 2.6, "vel": vel,
+			"spin": Vector3(_rng.randf_range(-9.0, 9.0), _rng.randf_range(-6.0, 6.0), _rng.randf_range(-9.0, 9.0)), "pop": 1.5})
+	return biggest
 
 
 ## Spec §6.1: torus ring expanding (0.2, thick, 0.2) -> (size, thick×0.3, size), colour fading to
@@ -1255,24 +1467,26 @@ func _update_combat(delta: float) -> void:
 			continue
 		g.transform = _step_local(g.k_abs, 0.0, g.lateral).scaled_local(Vector3.ONE * g.size_scale)
 		g.update_ai(d, delta)
-		# sword connects: active attack frames and the enemy inside the arc reach
-		if runner.attack_active() and d >= -0.6 and d <= 5.2 and (not runner.is_airborne() or runner.air_height() < 3.0 or runner.action == "slam"):
+		# sword connects: active frames and the enemy inside the aimed arc (slam: whole front)
+		if runner.attack_active() and _in_slash(g, d):
 			_kill_goblin(g)
 			continue
 		# running into a melee goblin
-		if d <= 0.9 and d >= -0.3 and not runner.is_airborne() and runner.invulnerable <= 0.0 and not runner.is_stopped():
+		if d <= 0.9 and d >= -0.3 and not _runner_in_air() and runner.invulnerable <= 0.0 and not runner.is_stopped():
 			_hurt_runner()
-	# arrows fly down the stairs toward the runner
+	_update_shuriken(delta)
+	# arrows fly along the stairs toward where the runner was (ar[2] = direction, -1 = down)
 	for ar in arrows.duplicate():
-		ar[1] -= 11.0 * delta
+		ar[1] += ar[2] * 11.0 * delta
 		var d: float = ar[1] - progress
 		var node: Node3D = ar[0]
-		node.transform = _step_local(ar[1], 1.25)
-		if d < -5.0:
+		# the step frame points -Z down the stairs; the arrow mesh is built along +X
+		node.transform = _step_local(ar[1], 1.25).rotated_local(Vector3.UP, PI * 0.5 + (PI if ar[2] > 0.0 else 0.0))
+		if abs(d) > 40.0 or (d * ar[2] > 5.0):
 			arrows.erase(ar)
 			node.queue_free()
 			continue
-		if d <= 0.6 and d >= -0.4:
+		if abs(d) <= 0.5:
 			if runner.attack_active():
 				# PARRY: arrow shatters, small speed burst as reward
 				var pp: Vector3 = node.global_position
@@ -1442,7 +1656,7 @@ func _update_camera(delta: float, dcurve: float) -> void:
 	var fov_gain: float = p[4]
 	var roll: float = p[5]
 	var rest := Vector3(0.0, world.base_y + 0.5, TOWER_R + STAIR_W * 0.5)
-	var rp := runner.global_position + Vector3(runner.air_height() * runner.scale.y * 0.6 + runner.advance * 0.35, 0.0, 0.0)
+	var rp := runner.global_position + Vector3(runner.air_height() * runner.scale.y * 0.6 + runner.advance * 0.35 * runner.facing, 0.0, 0.0)
 	rp.y = runner.global_position.y + runner.air_height() * runner.scale.y
 	var disp := rp - rest
 	var speed_extra := (speed_mult - 1.0) + dcurve * 1.2
@@ -1479,13 +1693,15 @@ func _tread_y_under_runner() -> float:
 func _process(delta: float) -> void:
 	if runner == null or _pose_mode:
 		return
-	# A / D ramp the climb speed; it eases back toward 1.0 when released
-	if Input.is_key_pressed(KEY_D):
+	# auto-run up the stairs; A / D ramp the climb speed and it eases back toward 1.0 when released
+	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
 		speed_mult = min(SPEED_MAX, speed_mult + 1.6 * delta)
-	elif Input.is_key_pressed(KEY_A):
+	elif Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
 		speed_mult = max(SPEED_MIN, speed_mult - 1.6 * delta)
 	else:
 		speed_mult = move_toward(speed_mult, 1.0, 0.6 * delta)
+	runner.moving = true          # auto-run (the stopped states are their own clips, never idle)
+	runner.demo_aim = _demo_action != "" and _demo_action != "mouse"   # "mouse" uses the real cursor
 	# speed bursts from attacks (small) and dashes (large), each with its own eased envelope
 	var burst := 1.0
 	var dcurve := 0.0
@@ -1526,8 +1742,18 @@ func _process(delta: float) -> void:
 		for g in goblins:
 			g.process_mode = Node.PROCESS_MODE_INHERIT
 	_gap_grace = max(_gap_grace - delta, 0.0)
-	if runner.action == "recover":
+	if runner.action in ["recover", "climb"]:
 		_gap_grace = 1.0
+	# knock-down: during the "plunge" clip the whole world rises by one pitch (the runner falls
+	# one floor, accelerating); because the helix repeats per pitch, snapping the offset back to
+	# zero at the grab is seamless and only the progress counter loses a full turn
+	if runner.action == "plunge":
+		var u: float = clamp(runner.clip_time() / PLUNGE_LEN, 0.0, 1.0)
+		world.fall_offset = PITCH * (u * u * (3.0 - 2.0 * u) * 0.35 + u * u * 0.65)
+	elif world.fall_offset != 0.0:
+		world.fall_offset = 0.0
+		progress -= STEPS_PER_TURN
+		_spawn_next = min(_spawn_next, progress + 10.0)   # repopulate the floor we fell onto
 	_update_combat(delta)
 	# motion blur: its own slow ramp (fades in over ~0.3 s, out over ~0.5 s), very light
 	var bcurve := 0.0
@@ -1593,13 +1819,13 @@ func _process(delta: float) -> void:
 				_hearts.set_lives(lives))
 	# forward (up the stairs = world +X at the runner) and camera direction, in rig-local space
 	var inv := runner.global_basis.inverse()
-	runner.set_frame(inv * Vector3(1, 0, 0), inv * (cam.global_position - runner.global_position))
+	runner.set_frame(inv * Vector3(runner.facing, 0, 0), inv * (cam.global_position - runner.global_position))
 	runner.set_run_speed(speed_mult)
 	runner.lean = clamp((speed_mult - 1.0) / (SPEED_MAX - 1.0), 0.0, 1.0)
 	# feet on the current tread; lane radius = middle of the stair width
 	var lane := TOWER_R + STAIR_W * 0.5
-	# forward advance pushes the runner up the stairs in camera space (world -X at the front)
-	runner.position = Vector3(runner.advance, _tread_y_under_runner() + runner.advance * STEP_H / 1.19, lane)
+	# forward advance pushes the runner along the stairs in the facing direction (camera space)
+	runner.position = Vector3(runner.advance * runner.facing, _tread_y_under_runner() + runner.advance * runner.facing * STEP_H / 1.19, lane)
 	# rule tests: "airspam" = jump then mash attack every frame; "hangspam" = mash attack/dash while hanging
 	if _demo_action == "airspam":
 		_demo_gap -= delta
@@ -1627,6 +1853,24 @@ func _process(delta: float) -> void:
 		runner.do_action("attack")
 		runner.do_action("dash")
 		runner.do_action("jump")
+	# "mouse": end-to-end check of the aimed draw through the REAL input path — the OS cursor is
+	# warped around the runner and a left-click InputEvent is injected, so _unhandled_input ->
+	# do_action -> _aim (reading the viewport mouse) runs exactly as it does for a player.
+	if _demo_action == "mouse":
+		_demo_gap -= delta
+		if _demo_gap <= 0.0:
+			var dirs := [Vector2(1, 0), Vector2(1, -1), Vector2(0, -1), Vector2(-1, 0), Vector2(1, 1), Vector2(-1, -1)]
+			var dv: Vector2 = dirs[_demo_i % dirs.size()].normalized()
+			var sp: Vector2 = cam.unproject_position(runner.global_position + Vector3(0, 1.3 * runner.scale.y, 0))
+			Input.warp_mouse(sp + dv * 260.0)
+			_mouse_demo_dir = dv
+			var ev := InputEventMouseButton.new()
+			ev.button_index = MOUSE_BUTTON_LEFT
+			ev.pressed = true
+			ev.position = sp + dv * 260.0
+			Input.parse_input_event(ev)
+			_demo_i += 1
+			_demo_gap = 0.45
 	if _demo_action != "" and _demo_action != "hangspam" and runner.action == "hang":
 		_demo_gap -= delta
 		if _demo_gap <= 0.0:
@@ -1694,6 +1938,10 @@ func _handle_cmdline() -> void:
 			_panel.set_value("distort", int(a.trim_prefix("--distort=")))
 		elif a.begins_with("--anim="):
 			_demo_action = a.trim_prefix("--anim=")
+		elif a.begins_with("--aim="):
+			# fixed cursor position (viewport pixels) for verifying the aimed draw slash in captures
+			var xy := a.trim_prefix("--aim=").split(",")
+			runner.aim_override = Vector2(float(xy[0]), float(xy[1]))
 		elif a.begins_with("--poses="):
 			# --poses=dir -> one PNG per key pose of every clip on a flat grey studio background
 			_take_poses(a.trim_prefix("--poses="))
@@ -1752,7 +2000,7 @@ func _take_sequence(dir: String, count: int, every: int) -> void:
 				continue
 			var dp2 := cam.unproject_position(d.global_position)
 			dead += "dead(%.0f,%.0f,vis=%s,sc=%.2f) " % [dp2.x, dp2.y, str(d.visible), d.scale.x]
-		f.store_line("%d,%s,%.0f,%.0f,%.2f,%.5f,%.2f,%.0f,%.2f,%d,%d,%s|%s|%.2f|%d" % [i, runner.action, sp.x, sp.y, runner.air_height(), world.phase, runner.parts["Hips"].position.x, arc_x, arc_face, lives, arrows.size(), gob, dead, Engine.time_scale, _splats.size()])
+		f.store_line("%d,%s,%.0f,%.0f,%.2f,%.5f,%.2f,%.0f,%.2f,%d,%d,%s|%s|%.2f|%d|cursor=%s facing=%d phi=%.0f mouse=%s" % [i, runner.action, sp.x, sp.y, runner.air_height(), world.phase, runner.parts["Hips"].position.x, arc_x, arc_face, lives, arrows.size(), gob, dead, Engine.time_scale, _splats.size(), str(_mouse_demo_dir), int(runner.facing), rad_to_deg(runner.attack_phi), str(get_viewport().get_mouse_position().round())])
 		f.close()
 	print("saved sequence: ", count, " frames to ", dir)
 	get_tree().quit()

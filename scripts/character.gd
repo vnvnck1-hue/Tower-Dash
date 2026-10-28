@@ -79,17 +79,55 @@ var slash_normal := Vector3(0, 0, 1)
 # slash VFX per attack: [a0, a1, r_in, r_out, centre_forward, centre_up, sweep (1 = top->bottom, -1 = bottom->top), spawn_t, life]
 # angle 90 = straight ahead; the arc always passes through the front.
 const TRAILS := {
-	"attack":     [10.0, 170.0, 1.2, 4.6, 1.4, 1.5, 1.0, 0.06, 0.32],
-	"attack2":    [10.0, 170.0, 1.2, 4.8, 1.5, 1.35, 1.0, 0.06, 0.32],
-	"attack3":    [10.0, 170.0, 1.2, 4.8, 1.5, 1.35, -1.0, 0.06, 0.32],
-	"air_attack": [15.0, 165.0, 1.2, 4.6, 1.5, 1.1, 1.0, 0.06, 0.32],
+	"attack":     [10.0, 170.0, 0.8, 4.8, 1.6, 1.5, 1.0, 0.0, 0.24],
+	"attack2":    [10.0, 170.0, 0.8, 5.0, 1.7, 1.35, 1.0, 0.0, 0.24],
+	"attack3":    [10.0, 170.0, 0.8, 5.0, 1.7, 1.35, -1.0, 0.0, 0.24],
+	"air_attack": [15.0, 165.0, 0.8, 4.8, 1.7, 1.1, 1.0, 0.0, 0.24],
 	"slam":       [-20.0, 200.0, 0.6, 4.2, 0.9, 0.2, 1.0, 0.30, 0.36],
 }
+## Katana-Zero style draw-slash: the attack is also a short leap toward the mouse. Screen
+## direction from the runner to the cursor -> forward lunge impulse (always some) plus an upward
+## hop when the cursor is above the runner, so a normal attack can briefly leave the ground.
+## Draw-slash strength presets (lunge impulse, hop velocity, aim cap deg): selectable in the
+## debug panel so the feel can be compared in play instead of fixed from estimates.
+const DRAW_PRESETS := ["Subtle", "Katana Zero", "Heavy"]
+const DRAW_VALUES := [[10.0, 6.5, 70.0], [15.0, 9.0, 85.0], [22.0, 12.0, 85.0]]
+var draw_preset := 1
+var ATTACK_LUNGE := 15.0
+var ATTACK_HOP := 9.0
+
+
+func set_draw_preset(i: int) -> void:
+	draw_preset = clampi(i, 0, DRAW_VALUES.size() - 1)
+	ATTACK_LUNGE = DRAW_VALUES[draw_preset][0]
+	ATTACK_HOP = DRAW_VALUES[draw_preset][1]
+	AIM_MAX = deg_to_rad(DRAW_VALUES[draw_preset][2])
+const HOP_GRAVITY := 30.0
+var _hop_vel := 0.0
+var _hopping := false
+var _hop_chain := 0          # short follow-up lifts used since the last ground contact
+var _hang_auto := 0.0        # seconds of hit-hang left before the automatic climb (0 = manual)
+## +1 = facing up the stairs (world +X), -1 = turned around, facing down (world -X).
+var facing := 1.0
+## Attack aim angle (radians) in the facing/up plane: 0 = straight ahead, +PI/2 = straight up.
+var attack_phi := 0.0
+var moving := false          # controller: a move key is held (run) or not (idle)
+var demo_aim := false        # capture/demo: ignore the cursor, always cut straight ahead
+var aim_override := Vector2.INF   # capture: fixed cursor position in pixels (--aim=x,y)
+var AIM_MAX := deg_to_rad(85.0)
 
 
 func set_frame(forward_local: Vector3, to_camera_local: Vector3) -> void:
 	fwd = forward_local.normalized()
 	cam_dir = to_camera_local.normalized()
+
+
+## Turn to face up (+1) or down (-1) the stairs; the rig's local -Z is its front.
+func set_facing(f: float) -> void:
+	if f == facing:
+		return
+	facing = f
+	rotation.y = deg_to_rad(-90.0) * facing
 
 
 func build(mat_factory: Callable) -> void:
@@ -265,85 +303,96 @@ func _build_clips() -> void:
 			"Cape0": Vector3(-80, 0, 0), "Cape1": Vector3(-25, 0, 0), "Cape2": Vector3(20, 0, 0)}],
 	], true)
 
-	# ---- attack 1: forward horizontal slash with a short lunge ----
+	# ---- idle (loop): ready stance with a slow breath ----
+	_clip("idle", [
+		[0.00, READY],
+		[0.55, _m(READY, {"@Hips": Vector3(0.0, 0.96, 0), "Torso": Vector3(-17, 0, 0), "Head": Vector3(6, 0, 0), "Cape0": Vector3(-26, 0, 0)})],
+		[1.10, READY],
+	], true)
+
+	# ---- Katana Zero draw slash (all three combo steps share the shape; the aim pitch is layered
+	# on top in _apply, so the same clip reads as an upward, forward or downward cut).
+	# Frame 0 is already the draw: sword low across the body, torso coiled, hips sliding forward
+	# (rig forward = local -Z, so the lunge is a NEGATIVE "@Hips" z). The cut is fully extended
+	# by 0.04 s and the recovery can be cancelled from 0.08 s: no wind-up, no end lag ----
 	_clip("attack", [
-		[0.00, {"@Hips": Vector3(-0.05, 0.92, 0), "Hips": Vector3(0, 28, 0), "Torso": Vector3(5, 30, 0), "Head": Vector3(-5, -20, 0),
-			"UpperLegR": Vector3(40, 0, 0), "LowerLegR": Vector3(-30, 0, 0), "UpperLegL": Vector3(-30, 0, 0), "LowerLegL": Vector3(-50, 0, 0),
-			"UpperArmR": Vector3(-165, 0, -30), "LowerArmR": Vector3(-60, 0, 0), "Sword": Vector3(20, 0, 0),
-			"UpperArmL": Vector3(60, 0, 20), "LowerArmL": Vector3(-40, 0, 0),
-			"Cape0": Vector3(-30, 0, 0), "Cape1": Vector3(-50, 0, 0), "Cape2": Vector3(-40, 0, 0)}],
-		[0.07, {"@Hips": Vector3(0.9, 0.95, 0), "Hips": Vector3(0, -25, 0), "Torso": Vector3(-50, -25, 0), "Head": Vector3(18, 10, 0),
+		[0.00, {"@Hips": Vector3(0, 0.95, -0.3), "Hips": Vector3(0, 12, 0), "Torso": Vector3(-28, 12, 0), "Head": Vector3(6, -10, 0),
+			"UpperLegR": Vector3(70, 0, 0), "LowerLegR": Vector3(-50, 0, 0), "UpperLegL": Vector3(-50, 0, 0), "LowerLegL": Vector3(-30, 0, 0),
+			"UpperArmR": Vector3(-20, 0, -35), "LowerArmR": Vector3(-55, 0, 0), "Sword": Vector3(25, 0, 0),
+			"UpperArmL": Vector3(30, 0, 20), "LowerArmL": Vector3(-40, 0, 0),
+			"Cape0": Vector3(-90, 0, 0), "Cape1": Vector3(-40, 0, 0), "Cape2": Vector3(-20, 0, 0)}],
+		[0.04, {"@Hips": Vector3(0, 0.95, -1.2), "Hips": Vector3(0, -22, 0), "Torso": Vector3(-48, -22, 0), "Head": Vector3(18, 10, 0),
 			"UpperLegR": Vector3(85, 0, 0), "LowerLegR": Vector3(-60, 0, 0), "UpperLegL": Vector3(-65, 0, 0), "LowerLegL": Vector3(-10, 0, 0),
-			"UpperArmR": Vector3(95, 0, -10), "LowerArmR": Vector3(0, 0, 0), "Sword": Vector3(0, 0, 0),
+			"UpperArmR": Vector3(95, 0, -6), "LowerArmR": Vector3(0, 0, 0), "Sword": Vector3(0, 0, 0),
 			"UpperArmL": Vector3(-70, 0, 30), "LowerArmL": Vector3(-30, 0, 0),
 			"Cape0": Vector3(-130, 0, 0), "Cape1": Vector3(-30, 0, 0), "Cape2": Vector3(10, 0, 0)}],
-		[0.22, {"@Hips": Vector3(0.8, 0.9, 0), "Hips": Vector3(0, -30, 0), "Torso": Vector3(-38, -30, 0), "Head": Vector3(10, 15, 0),
+		[0.14, {"@Hips": Vector3(0, 0.9, -1.1), "Hips": Vector3(0, -28, 0), "Torso": Vector3(-36, -28, 0), "Head": Vector3(10, 15, 0),
 			"UpperLegR": Vector3(80, 0, 0), "LowerLegR": Vector3(-70, 0, 0), "UpperLegL": Vector3(-55, 0, 0), "LowerLegL": Vector3(-15, 0, 0),
-			"UpperArmR": Vector3(30, 0, -15), "LowerArmR": Vector3(-10, 0, 0), "Sword": Vector3(-10, 0, 0),
+			"UpperArmR": Vector3(60, 0, -12), "LowerArmR": Vector3(-10, 0, 0), "Sword": Vector3(-10, 0, 0),
 			"UpperArmL": Vector3(-50, 0, 30), "LowerArmL": Vector3(-50, 0, 0),
 			"Cape0": Vector3(-80, 0, 0), "Cape1": Vector3(-20, 0, 0), "Cape2": Vector3(20, 0, 0)}],
-		[0.30, READY],
-	], false, 0.16)
+		[0.20, READY],
+	], false, 0.08)
 
-	# ---- attack 2: overhead chop driving forward ----
+	# ---- combo 2: reverse draw from the other side (sword starts high, cuts across) ----
 	_clip("attack2", [
-		[0.00, {"@Hips": Vector3(-0.1, 1.06, 0), "Torso": Vector3(25, 0, 0), "Head": Vector3(-30, 0, 0),
-			"UpperLegR": Vector3(20, 0, 0), "LowerLegR": Vector3(-20, 0, 0), "UpperLegL": Vector3(-25, 0, 0), "LowerLegL": Vector3(-30, 0, 0),
-			"UpperArmR": Vector3(-175, 0, -20), "LowerArmR": Vector3(-40, 0, 0), "Sword": Vector3(30, 0, 0),
-			"UpperArmL": Vector3(-150, 0, 25), "LowerArmL": Vector3(-40, 0, 0),
-			"Cape0": Vector3(20, 0, 0), "Cape1": Vector3(30, 0, 0), "Cape2": Vector3(20, 0, 0)}],
-		[0.07, {"@Hips": Vector3(0.95, 0.82, 0), "Torso": Vector3(-65, 0, 0), "Head": Vector3(22, 0, 0),
-			"UpperLegR": Vector3(95, 0, 0), "LowerLegR": Vector3(-80, 0, 0), "UpperLegL": Vector3(-50, 0, 0), "LowerLegL": Vector3(-10, 0, 0),
-			"UpperArmR": Vector3(50, 0, -10), "LowerArmR": Vector3(0, 0, 0), "Sword": Vector3(0, 0, 0),
-			"UpperArmL": Vector3(45, 0, 15), "LowerArmL": Vector3(0, 0, 0),
-			"Cape0": Vector3(-140, 0, 0), "Cape1": Vector3(-40, 0, 0), "Cape2": Vector3(0, 0, 0)}],
-		[0.22, {"@Hips": Vector3(0.85, 0.78, 0), "Torso": Vector3(-55, 0, 0), "Head": Vector3(25, 0, 0),
-			"UpperLegR": Vector3(90, 0, 0), "LowerLegR": Vector3(-85, 0, 0), "UpperLegL": Vector3(-45, 0, 0), "LowerLegL": Vector3(-15, 0, 0),
-			"UpperArmR": Vector3(20, 0, -10), "LowerArmR": Vector3(0, 0, 0), "Sword": Vector3(-10, 0, 0),
-			"UpperArmL": Vector3(15, 0, 15), "LowerArmL": Vector3(0, 0, 0),
+		[0.00, {"@Hips": Vector3(0, 1.0, -0.3), "Hips": Vector3(0, -12, 0), "Torso": Vector3(-20, -12, 0), "Head": Vector3(0, 10, 0),
+			"UpperLegR": Vector3(50, 0, 0), "LowerLegR": Vector3(-40, 0, 0), "UpperLegL": Vector3(-40, 0, 0), "LowerLegL": Vector3(-20, 0, 0),
+			"UpperArmR": Vector3(-150, 0, 20), "LowerArmR": Vector3(-20, 0, 0), "Sword": Vector3(20, 0, 0),
+			"UpperArmL": Vector3(-40, 0, 25), "LowerArmL": Vector3(-40, 0, 0),
+			"Cape0": Vector3(-60, 0, 0), "Cape1": Vector3(-20, 0, 0), "Cape2": Vector3(0, 0, 0)}],
+		[0.04, {"@Hips": Vector3(0, 0.9, -1.2), "Hips": Vector3(0, 20, 0), "Torso": Vector3(-50, 20, 0), "Head": Vector3(18, -10, 0),
+			"UpperLegR": Vector3(85, 0, 0), "LowerLegR": Vector3(-60, 0, 0), "UpperLegL": Vector3(-65, 0, 0), "LowerLegL": Vector3(-10, 0, 0),
+			"UpperArmR": Vector3(95, 0, -40), "LowerArmR": Vector3(0, 0, 0), "Sword": Vector3(0, 0, 0),
+			"UpperArmL": Vector3(-60, 0, 30), "LowerArmL": Vector3(-30, 0, 0),
+			"Cape0": Vector3(-130, 0, 0), "Cape1": Vector3(-30, 0, 0), "Cape2": Vector3(10, 0, 0)}],
+		[0.14, {"@Hips": Vector3(0, 0.88, -1.1), "Hips": Vector3(0, 24, 0), "Torso": Vector3(-40, 24, 0), "Head": Vector3(12, -12, 0),
+			"UpperLegR": Vector3(80, 0, 0), "LowerLegR": Vector3(-70, 0, 0), "UpperLegL": Vector3(-55, 0, 0), "LowerLegL": Vector3(-15, 0, 0),
+			"UpperArmR": Vector3(60, 0, -50), "LowerArmR": Vector3(-10, 0, 0), "Sword": Vector3(-10, 0, 0),
+			"UpperArmL": Vector3(-40, 0, 30), "LowerArmL": Vector3(-50, 0, 0),
 			"Cape0": Vector3(-90, 0, 0), "Cape1": Vector3(-30, 0, 0), "Cape2": Vector3(10, 0, 0)}],
-		[0.30, READY],
-	], false, 0.16)
+		[0.20, READY],
+	], false, 0.08)
 
-	# ---- attack 3: rising cut with a hop forward ----
+	# ---- combo 3: big finishing draw with a longer slide ----
 	_clip("attack3", [
-		[0.00, {"@Hips": Vector3(-0.1, 0.62, 0), "Torso": Vector3(-35, 15, 0), "Head": Vector3(25, -10, 0),
-			"UpperLegR": Vector3(85, 0, 0), "LowerLegR": Vector3(-125, 0, 0), "UpperLegL": Vector3(60, 0, 0), "LowerLegL": Vector3(-115, 0, 0),
-			"UpperArmR": Vector3(-60, 0, -20), "LowerArmR": Vector3(-20, 0, 0), "Sword": Vector3(30, 0, 0),
-			"UpperArmL": Vector3(50, 0, 20), "LowerArmL": Vector3(-60, 0, 0),
-			"Cape0": Vector3(-20, 0, 0), "Cape1": Vector3(-30, 0, 0), "Cape2": Vector3(-20, 0, 0)}],
-		[0.07, {"@Hips": Vector3(0.9, 1.5, 0), "Torso": Vector3(15, -10, 0), "Head": Vector3(-25, 5, 0),
-			"UpperLegR": Vector3(30, 0, 0), "LowerLegR": Vector3(-60, 0, 0), "UpperLegL": Vector3(-30, 0, 0), "LowerLegL": Vector3(-40, 0, 0),
-			"UpperArmR": Vector3(160, 0, -10), "LowerArmR": Vector3(0, 0, 0), "Sword": Vector3(0, 0, 0),
-			"UpperArmL": Vector3(-80, 0, 20), "LowerArmL": Vector3(-30, 0, 0),
-			"Cape0": Vector3(60, 0, 0), "Cape1": Vector3(40, 0, 0), "Cape2": Vector3(30, 0, 0)}],
-		[0.20, {"@Hips": Vector3(0.9, 1.3, 0), "Torso": Vector3(20, -10, 0), "Head": Vector3(-30, 5, 0),
-			"UpperLegR": Vector3(20, 0, 0), "LowerLegR": Vector3(-50, 0, 0), "UpperLegL": Vector3(-20, 0, 0), "LowerLegL": Vector3(-40, 0, 0),
-			"UpperArmR": Vector3(185, 0, -10), "LowerArmR": Vector3(-10, 0, 0), "Sword": Vector3(10, 0, 0),
-			"UpperArmL": Vector3(-70, 0, 20), "LowerArmL": Vector3(-30, 0, 0),
-			"Cape0": Vector3(50, 0, 0), "Cape1": Vector3(40, 0, 0), "Cape2": Vector3(30, 0, 0)}],
-		[0.32, READY],
-	], false, 0.18)
+		[0.00, {"@Hips": Vector3(0, 0.8, -0.3), "Torso": Vector3(-30, 14, 0), "Head": Vector3(14, -10, 0),
+			"UpperLegR": Vector3(80, 0, 0), "LowerLegR": Vector3(-110, 0, 0), "UpperLegL": Vector3(50, 0, 0), "LowerLegL": Vector3(-100, 0, 0),
+			"UpperArmR": Vector3(-30, 0, -35), "LowerArmR": Vector3(-50, 0, 0), "Sword": Vector3(25, 0, 0),
+			"UpperArmL": Vector3(40, 0, 20), "LowerArmL": Vector3(-60, 0, 0),
+			"Cape0": Vector3(-40, 0, 0), "Cape1": Vector3(-30, 0, 0), "Cape2": Vector3(-20, 0, 0)}],
+		[0.04, {"@Hips": Vector3(0, 0.9, -1.5), "Hips": Vector3(0, -28, 0), "Torso": Vector3(-55, -28, 0), "Head": Vector3(22, 12, 0),
+			"UpperLegR": Vector3(95, 0, 0), "LowerLegR": Vector3(-70, 0, 0), "UpperLegL": Vector3(-70, 0, 0), "LowerLegL": Vector3(-10, 0, 0),
+			"UpperArmR": Vector3(100, 0, -4), "LowerArmR": Vector3(0, 0, 0), "Sword": Vector3(0, 0, 0),
+			"UpperArmL": Vector3(-80, 0, 30), "LowerArmL": Vector3(-30, 0, 0),
+			"Cape0": Vector3(-140, 0, 0), "Cape1": Vector3(-40, 0, 0), "Cape2": Vector3(0, 0, 0)}],
+		[0.13, {"@Hips": Vector3(0, 0.88, -1.4), "Hips": Vector3(0, -32, 0), "Torso": Vector3(-42, -32, 0), "Head": Vector3(14, 16, 0),
+			"UpperLegR": Vector3(90, 0, 0), "LowerLegR": Vector3(-80, 0, 0), "UpperLegL": Vector3(-60, 0, 0), "LowerLegL": Vector3(-15, 0, 0),
+			"UpperArmR": Vector3(55, 0, -14), "LowerArmR": Vector3(-10, 0, 0), "Sword": Vector3(-10, 0, 0),
+			"UpperArmL": Vector3(-60, 0, 30), "LowerArmL": Vector3(-50, 0, 0),
+			"Cape0": Vector3(-90, 0, 0), "Cape1": Vector3(-30, 0, 0), "Cape2": Vector3(10, 0, 0)}],
+		[0.20, READY],
+	], false, 0.09)
 
-	# ---- air attack: forward slash at the current height (no dive); a "drop" clip follows ----
+	# ---- air attack: the same draw at the current height (no dive); a "drop" clip follows ----
 	_clip("air_attack", [
-		[0.00, {"@Hips": Vector3(0.0, 1.0, 0), "Hips": Vector3(0, 25, 0), "Torso": Vector3(5, 25, 0), "Head": Vector3(-5, -15, 0),
+		[0.00, {"@Hips": Vector3(0, 1.0, -0.3), "Hips": Vector3(0, 12, 0), "Torso": Vector3(-25, 10, 0), "Head": Vector3(5, -8, 0),
 			"UpperLegR": Vector3(60, 0, 0), "LowerLegR": Vector3(-100, 0, 0), "UpperLegL": Vector3(20, 0, 0), "LowerLegL": Vector3(-70, 0, 0),
-			"UpperArmR": Vector3(-165, 0, -25), "LowerArmR": Vector3(-55, 0, 0), "Sword": Vector3(20, 0, 0),
-			"UpperArmL": Vector3(50, 0, 20), "LowerArmL": Vector3(-40, 0, 0),
-			"Cape0": Vector3(0, 0, 0), "Cape1": Vector3(30, 0, 0), "Cape2": Vector3(30, 0, 0)}],
-		[0.07, {"@Hips": Vector3(0.7, 1.05, 0), "Hips": Vector3(0, -25, 0), "Torso": Vector3(-45, -20, 0), "Head": Vector3(15, 10, 0),
+			"UpperArmR": Vector3(-20, 0, -35), "LowerArmR": Vector3(-55, 0, 0), "Sword": Vector3(25, 0, 0),
+			"UpperArmL": Vector3(30, 0, 20), "LowerArmL": Vector3(-40, 0, 0),
+			"Cape0": Vector3(-40, 0, 0), "Cape1": Vector3(10, 0, 0), "Cape2": Vector3(20, 0, 0)}],
+		[0.04, {"@Hips": Vector3(0, 1.05, -1.0), "Hips": Vector3(0, -22, 0), "Torso": Vector3(-45, -20, 0), "Head": Vector3(15, 10, 0),
 			"UpperLegR": Vector3(20, 0, 0), "LowerLegR": Vector3(-60, 0, 0), "UpperLegL": Vector3(-40, 0, 0), "LowerLegL": Vector3(-50, 0, 0),
-			"UpperArmR": Vector3(95, 0, -10), "LowerArmR": Vector3(0, 0, 0), "Sword": Vector3(0, 0, 0),
+			"UpperArmR": Vector3(95, 0, -6), "LowerArmR": Vector3(0, 0, 0), "Sword": Vector3(0, 0, 0),
 			"UpperArmL": Vector3(-70, 0, 30), "LowerArmL": Vector3(-30, 0, 0),
 			"Cape0": Vector3(-130, 0, 0), "Cape1": Vector3(-30, 0, 0), "Cape2": Vector3(10, 0, 0)}],
-		[0.22, {"@Hips": Vector3(0.75, 1.0, 0), "Hips": Vector3(0, -30, 0), "Torso": Vector3(-35, -25, 0), "Head": Vector3(10, 15, 0),
+		[0.14, {"@Hips": Vector3(0, 1.0, -0.9), "Hips": Vector3(0, -28, 0), "Torso": Vector3(-35, -25, 0), "Head": Vector3(10, 15, 0),
 			"UpperLegR": Vector3(30, 0, 0), "LowerLegR": Vector3(-70, 0, 0), "UpperLegL": Vector3(-30, 0, 0), "LowerLegL": Vector3(-40, 0, 0),
-			"UpperArmR": Vector3(30, 0, -15), "LowerArmR": Vector3(-10, 0, 0), "Sword": Vector3(-10, 0, 0),
+			"UpperArmR": Vector3(60, 0, -12), "LowerArmR": Vector3(-10, 0, 0), "Sword": Vector3(-10, 0, 0),
 			"UpperArmL": Vector3(-50, 0, 30), "LowerArmL": Vector3(-50, 0, 0),
 			"Cape0": Vector3(-80, 0, 0), "Cape1": Vector3(-20, 0, 0), "Cape2": Vector3(20, 0, 0)}],
-		[0.30, _m(READY, {"@Hips": Vector3(0.4, 1.0, 0)})],
-	], false, 0.16, true)
+		[0.20, _m(READY, {"@Hips": Vector3(0, 1.0, -0.4)})],
+	], false, 0.08, true)
 
 	# ---- slam: hop up, spin forward, drive the greatsword into the step (down + attack in the air) ----
 	_clip("slam", [
@@ -414,16 +463,18 @@ func _build_clips() -> void:
 	var tuck := {"UpperLegR": Vector3(95, 0, 0), "LowerLegR": Vector3(-125, 0, 0), "UpperLegL": Vector3(80, 0, 0), "LowerLegL": Vector3(-120, 0, 0),
 		"UpperArmR": Vector3(135, 0, -12), "LowerArmR": Vector3(0, 0, 0), "Sword": Vector3(0, 0, 0), "UpperArmL": Vector3(70, 0, 30), "LowerArmL": Vector3(-70, 0, 0),
 		"Torso": Vector3(-20, 0, 0), "Head": Vector3(10, 0, 0), "Cape0": Vector3(60, 0, 0), "Cape1": Vector3(40, 0, 0), "Cape2": Vector3(30, 0, 0)}
+	# (the double jump rises much higher than the first jump's apex: +2.6 over the start height)
 	_clip("jump2", [
 		[0.00, _m(tuck, {"@Hips": Vector3(0.1, 1.3, 0), "Hips": Vector3(-30, 0, 0)})],
-		[0.08, _m(tuck, {"@Hips": Vector3(0.18, 2.0, 0), "Hips": Vector3(-115, 0, 0)})],
-		[0.16, _m(tuck, {"@Hips": Vector3(0.25, 2.5, 0), "Hips": Vector3(-200, 0, 0)})],
-		[0.25, _m(tuck, {"@Hips": Vector3(0.3, 2.7, 0), "Hips": Vector3(-280, 0, 0)})],
-		[0.34, _m(tuck, {"@Hips": Vector3(0.35, 2.7, 0), "Hips": Vector3(-360, 0, 0)})],
-		[0.58, _m(_m(tuck, FALL_ARMS), {"@Hips": Vector3(0.4, 1.6, 0), "Hips": Vector3(-360, 0, 0), "UpperLegR": Vector3(30, 0, 0), "LowerLegR": Vector3(-10, 0, 0), "UpperLegL": Vector3(-5, 0, 0), "LowerLegL": Vector3(-20, 0, 0)})],
-		[0.70, _m(READY, {"@Hips": Vector3(0.3, 0.68, 0), "Torso": Vector3(-45, 0, 0), "Head": Vector3(30, 0, 0),
+		[0.08, _m(tuck, {"@Hips": Vector3(0.18, 2.5, 0), "Hips": Vector3(-115, 0, 0)})],
+		[0.16, _m(tuck, {"@Hips": Vector3(0.25, 3.4, 0), "Hips": Vector3(-200, 0, 0)})],
+		[0.25, _m(tuck, {"@Hips": Vector3(0.3, 3.85, 0), "Hips": Vector3(-280, 0, 0)})],
+		[0.36, _m(tuck, {"@Hips": Vector3(0.35, 3.9, 0), "Hips": Vector3(-360, 0, 0)})],
+		[0.50, _m(_m(tuck, FALL_ARMS), {"@Hips": Vector3(0.4, 3.3, 0), "Hips": Vector3(-360, 0, 0), "UpperLegR": Vector3(30, 0, 0), "LowerLegR": Vector3(-10, 0, 0), "UpperLegL": Vector3(-5, 0, 0), "LowerLegL": Vector3(-20, 0, 0)})],
+		[0.66, _m(_m(tuck, FALL_ARMS), {"@Hips": Vector3(0.4, 1.8, 0), "Hips": Vector3(-360, 0, 0), "UpperLegR": Vector3(40, 0, 0), "LowerLegR": Vector3(-10, 0, 0), "UpperLegL": Vector3(-5, 0, 0), "LowerLegL": Vector3(-20, 0, 0)})],
+		[0.78, _m(READY, {"@Hips": Vector3(0.3, 0.68, 0), "Torso": Vector3(-45, 0, 0), "Head": Vector3(30, 0, 0),
 			"UpperLegR": Vector3(85, 0, 0), "LowerLegR": Vector3(-125, 0, 0), "UpperLegL": Vector3(70, 0, 0), "LowerLegL": Vector3(-120, 0, 0)})],
-		[0.80, READY],
+		[0.88, READY],
 	], false, 0.12, true)
 
 	# ---- dash: instant forward leap (cartoon pose), very short ----
@@ -479,6 +530,51 @@ func _build_clips() -> void:
 			"Cape0": Vector3(90, 0, 0), "Cape1": Vector3(50, 0, 0), "Cape2": Vector3(30, 0, 0)}],
 		[0.40, _m(READY, {"@Hips": Vector3(-0.3, 0.95, 0), "Torso": Vector3(5, 0, 0)})],
 		[0.50, READY],
+	], false, 0.12)   # being hit no longer stops the runner: the stagger can be cancelled after 0.12 s
+
+	# ---- knock: hit by an enemy -> thrown back off the tread, dropping toward the step below
+	# (the controller rewinds the world one step meanwhile); ends in the hang grip ----
+	_clip("knock", [
+		[0.00, {"@Hips": Vector3(-0.2, 1.0, 0), "Torso": Vector3(30, 0, 0), "Head": Vector3(-35, 0, 0),
+			"UpperArmR": Vector3(-120, 0, -50), "LowerArmR": Vector3(-30, 0, 0), "Sword": Vector3(-30, 0, 0), "UpperArmL": Vector3(-120, 0, 50), "LowerArmL": Vector3(-30, 0, 0),
+			"UpperLegR": Vector3(40, 0, 0), "LowerLegR": Vector3(-20, 0, 0), "UpperLegL": Vector3(-30, 0, 0), "LowerLegL": Vector3(-40, 0, 0),
+			"Cape0": Vector3(70, 0, 0), "Cape1": Vector3(40, 0, 0), "Cape2": Vector3(20, 0, 0)}],
+		[0.12, {"@Hips": Vector3(-0.5, 0.75, 0), "Torso": Vector3(45, 0, 0), "Head": Vector3(-40, 0, 0),
+			"UpperArmR": Vector3(-150, 0, -40), "LowerArmR": Vector3(-20, 0, 0), "Sword": Vector3(-30, 0, 0), "UpperArmL": Vector3(-150, 0, 40), "LowerArmL": Vector3(-20, 0, 0),
+			"UpperLegR": Vector3(60, 0, 0), "LowerLegR": Vector3(-30, 0, 0), "UpperLegL": Vector3(-40, 0, 0), "LowerLegL": Vector3(-60, 0, 0),
+			"Cape0": Vector3(90, 0, 0), "Cape1": Vector3(50, 0, 0), "Cape2": Vector3(30, 0, 0)}],
+		[0.26, {"@Hips": Vector3(-0.5, 0.2, 0), "Torso": Vector3(30, 0, 0), "Head": Vector3(-30, 0, 0),
+			"UpperArmR": Vector3(-160, 0, -40), "LowerArmR": Vector3(-20, 0, 0), "Sword": Vector3(-30, 0, 0), "UpperArmL": Vector3(-160, 0, 40), "LowerArmL": Vector3(-20, 0, 0),
+			"UpperLegR": Vector3(50, 0, 0), "LowerLegR": Vector3(-40, 0, 0), "UpperLegL": Vector3(-30, 0, 0), "LowerLegL": Vector3(-60, 0, 0),
+			"Cape0": Vector3(90, 0, 0), "Cape1": Vector3(50, 0, 0), "Cape2": Vector3(30, 0, 0)}],
+	], false, 10.0)
+
+	# ---- plunge: the long drop past the floor below (the controller raises the world by one
+	# pitch meanwhile): tumbling with arms flailing, then the arms reach up to catch the edge ----
+	_clip("plunge", [
+		[0.00, {"@Hips": Vector3(-0.5, 0.2, 0), "Torso": Vector3(30, 0, 0), "Head": Vector3(-30, 0, 0),
+			"UpperArmR": Vector3(-160, 0, -40), "LowerArmR": Vector3(-20, 0, 0), "Sword": Vector3(-30, 0, 0), "UpperArmL": Vector3(-160, 0, 40), "LowerArmL": Vector3(-20, 0, 0),
+			"UpperLegR": Vector3(50, 0, 0), "LowerLegR": Vector3(-40, 0, 0), "UpperLegL": Vector3(-30, 0, 0), "LowerLegL": Vector3(-60, 0, 0),
+			"Cape0": Vector3(90, 0, 0), "Cape1": Vector3(50, 0, 0), "Cape2": Vector3(30, 0, 0)}],
+		[0.22, {"@Hips": Vector3(-0.45, -0.4, 0), "Torso": Vector3(-25, 0, 0), "Head": Vector3(20, 0, 0),
+			"UpperArmR": Vector3(170, 0, -50), "LowerArmR": Vector3(-30, 0, 0), "Sword": Vector3(-20, 0, 0), "UpperArmL": Vector3(170, 0, 50), "LowerArmL": Vector3(-30, 0, 0),
+			"UpperLegR": Vector3(-40, 0, 0), "LowerLegR": Vector3(-60, 0, 0), "UpperLegL": Vector3(60, 0, 0), "LowerLegL": Vector3(-60, 0, 0),
+			"Cape0": Vector3(120, 0, 0), "Cape1": Vector3(50, 0, 0), "Cape2": Vector3(30, 0, 0)}],
+		[0.44, {"@Hips": Vector3(-0.4, -1.1, 0), "Torso": Vector3(15, 0, 0), "Head": Vector3(-15, 0, 0),
+			"UpperArmR": Vector3(175, 0, -20), "LowerArmR": Vector3(-20, 0, 0), "Sword": Vector3(-40, 0, 0), "UpperArmL": Vector3(178, 0, 20), "LowerArmL": Vector3(-20, 0, 0),
+			"UpperLegR": Vector3(60, 0, 0), "LowerLegR": Vector3(-60, 0, 0), "UpperLegL": Vector3(-40, 0, 0), "LowerLegL": Vector3(-60, 0, 0),
+			"Cape0": Vector3(130, 0, 0), "Cape1": Vector3(60, 0, 0), "Cape2": Vector3(30, 0, 0)}],
+		[0.62, _m(hang, {"@Hips": Vector3(-0.35, -0.55, 0), "UpperLegR": Vector3(30, 0, 0), "UpperLegL": Vector3(-30, 0, 0)})],
+	], false, 10.0)
+
+	# ---- climb: from the hang, haul up over the edge, crouch on the tread and get going ----
+	_clip("climb", [
+		[0.00, hang],
+		[0.16, _m(hang, {"@Hips": Vector3(-0.3, 0.05, 0), "UpperArmR": Vector3(110, 0, -10), "UpperArmL": Vector3(115, 0, 10), "LowerArmR": Vector3(-60, 0, 0), "LowerArmL": Vector3(-60, 0, 0), "Torso": Vector3(-35, 0, 0), "Head": Vector3(20, 0, 0),
+			"UpperLegR": Vector3(70, 0, 0), "LowerLegR": Vector3(-110, 0, 0), "UpperLegL": Vector3(20, 0, 0), "LowerLegL": Vector3(-60, 0, 0)})],
+		[0.32, _m(READY, {"@Hips": Vector3(0.1, 0.62, 0), "Torso": Vector3(-45, 0, 0), "Head": Vector3(30, 0, 0),
+			"UpperLegR": Vector3(85, 0, 0), "LowerLegR": Vector3(-125, 0, 0), "UpperLegL": Vector3(70, 0, 0), "LowerLegL": Vector3(-120, 0, 0)})],
+		[0.44, READY],
 	], false, 10.0)
 
 	# ---- fall ----
@@ -543,6 +639,16 @@ func _apply(pose: Dictionary) -> void:
 		parts["Hips"].rotate_x(deg_to_rad(-22.0 * lean))
 		parts["Torso"].rotate_x(deg_to_rad(-18.0 * lean))
 		parts["Head"].rotate_x(deg_to_rad(16.0 * lean))
+	# aim pitch: the whole draw is tilted toward the cursor (shoulders carry most of it, the
+	# torso leans into the cut, the head looks along the blade). Pitch is an X rotation in this
+	# rig; +phi raises the arm toward straight up.
+	if attack_phi != 0.0 and (action.begins_with("attack") or action == "air_attack"):
+		var w: float = 1.0 - smoothstep(0.14, 0.20, _t)        # ease out as the clip settles
+		var ph: float = attack_phi * w
+		parts["UpperArmR"].rotate_x(ph)
+		parts["UpperArmL"].rotate_x(ph * 0.45)
+		parts["Torso"].rotate_x(ph * 0.35)
+		parts["Head"].rotate_x(ph * 0.3)
 
 
 func _play(name_: String) -> void:
@@ -558,7 +664,7 @@ func clip_time() -> float:
 
 
 func can_cancel() -> bool:
-	return action == "run" or _t >= float(_clips[_cur]["cancel"])
+	return action == "run" or action == "idle" or _t >= float(_clips[_cur]["cancel"])
 
 
 func is_airborne() -> bool:
@@ -566,7 +672,7 @@ func is_airborne() -> bool:
 
 
 func is_grounded() -> bool:
-	return action == "run" or action in ["attack", "attack2", "attack3"]
+	return (action in ["run", "idle", "attack", "attack2", "attack3"]) and not _hopping
 
 
 func air_height() -> float:
@@ -579,7 +685,9 @@ func _start_air(name_: String, clip_start_y: float) -> void:
 	_play(name_)
 
 
-func _start_slash(name_: String) -> void:
+## [phi] aim angle (0 = ahead, +PI/2 = up): the crescent and its offset are rotated in the
+## slash plane so the arc is centred on the cursor direction.
+func _start_slash(name_: String, phi := 0.0) -> void:
 	if not TRAILS.has(name_):
 		_trail_spawn = -1.0
 		return
@@ -588,18 +696,66 @@ func _start_slash(name_: String) -> void:
 	var up_local: Vector3 = (Vector3.UP * p[6] + cam_dir * 0.3).normalized()
 	var v_axis := fwd
 	var u_axis: Vector3 = (up_local - v_axis * up_local.dot(v_axis)).normalized()
-	_trail.mesh = MeshBuilder.crescent(p[0], p[1], p[2], p[3], u_axis, v_axis, 28)
+	# crescent angle 0 = u (up for sweep +1), 90 = forward; aiming up by phi shifts the arc by -phi
+	var shift: float = -rad_to_deg(phi) * p[6]
+	_trail.mesh = MeshBuilder.crescent(p[0] + shift, p[1] + shift, p[2], p[3], u_axis, v_axis, 28)
 	slash_normal = u_axis.cross(v_axis).normalized()   # Root-local plane normal, for verification
-	_trail.position = fwd * p[4] + Vector3.UP * p[5]
+	# arc centre swings with the aim; the vertical part is halved so a steep cut stays anchored
+	# at the shoulders instead of floating above the head
+	_trail.position = fwd * cos(phi) * p[4] + Vector3.UP * (p[5] + sin(phi) * p[4] * 0.5)
 	_trail_spawn = p[7]
 	_trail_len = p[8]
 	_trail.visible = false
 
 
+## Screen-space aim from the runner toward the mouse cursor: x = along the stairs in WORLD +X
+## (screen right), y = up. (facing, 0) when there is no camera or the cursor sits on the runner.
+func _aim() -> Vector2:
+	var vp := get_viewport()
+	var cam3: Camera3D = vp.get_camera_3d()
+	if cam3 == null or (demo_aim and aim_override == Vector2.INF):
+		return Vector2(facing, 0.0)
+	var origin: Vector3 = global_position + Vector3(0.0, 1.3 * scale.y, 0.0)
+	var sp: Vector2 = cam3.unproject_position(origin)
+	var mouse: Vector2 = aim_override if aim_override != Vector2.INF else vp.get_mouse_position()
+	var d: Vector2 = mouse - sp
+	if d.length() < 6.0:
+		return Vector2(facing, 0.0)
+	d = d.normalized()
+	var x_s: Vector2 = (cam3.unproject_position(origin + Vector3(1, 0, 0)) - sp).normalized()
+	var up_s: Vector2 = (cam3.unproject_position(origin + Vector3.UP) - sp).normalized()
+	return Vector2(d.dot(x_s), d.dot(up_s))
+
+
+## Katana Zero draw: turn to face the cursor's side, aim the cut at the cursor angle (up to
+## 85 deg above/below), slide in that direction. Aiming above the runner lifts it (short hop);
+## in the air the slide is forward only.
+func _aim_lunge(air: bool) -> void:
+	var aim := _aim()
+	# forward-only runner: the cut is aimed by the cursor's height, never turned around
+	attack_phi = clamp(atan2(aim.y, max(aim.x, 0.001)), -AIM_MAX, AIM_MAX)
+	# slide: full lunge along the stairs when cutting ahead, less when cutting steeply up/down
+	_advance_vel += ATTACK_LUNGE * clamp(0.35 + cos(attack_phi) * 0.65, 0.35, 1.0)
+	if attack_phi > 0.12:
+		var hv: float = ATTACK_HOP * clamp(sin(attack_phi), 0.0, 1.0)
+		if air:
+			parts["Root"].position.y += hv * 0.08
+		elif not _hopping and parts["Root"].position.y <= 0.0:
+			# Katana Zero: an upward swing from the ground glides the character up
+			_hop_vel = hv
+			_hopping = true
+			_hop_chain = 0
+		elif _hop_chain < 2:
+			# "a second swing after the glide gives a very short lift, so infinite flight is not
+			# possible": two small boosts per ground contact, then none
+			_hop_chain += 1
+			_hop_vel = max(_hop_vel, hv * 0.35)
+
+
 ## Returns true if the action started. Attacks lunge, dashes leap; air variants when airborne.
 func do_action(name_: String) -> bool:
 	if name_ == "attack":
-		if action in ["hang", "hurt", "recover"]:
+		if action in ["hang", "knock", "plunge", "climb", "recover"]:
 			return false
 		if is_airborne():
 			if _air_attacks >= 1:
@@ -612,9 +768,9 @@ func do_action(name_: String) -> bool:
 				slam_started.emit()
 				return true
 			_start_air("air_attack", 1.0)
-			_start_slash("air_attack")
-			_advance_vel += 9.0
-			burst.emit(1.3, 0.22)
+			_aim_lunge(true)
+			_start_slash("air_attack", attack_phi)
+			burst.emit(1.5, 0.2)
 			return true
 		if not can_cancel():
 			_queued = name_
@@ -623,16 +779,16 @@ func do_action(name_: String) -> bool:
 		_combo += 1
 		_combo_timer = 0.9
 		_play(n)
-		_start_slash(n)
-		_advance_vel += 9.0
-		burst.emit(1.3, 0.22)
+		_aim_lunge(false)
+		_start_slash(n, attack_phi)
+		burst.emit(1.5, 0.2)
 		return true
 	if name_ == "jump":
 		if action == "hang":
 			_play("recover")
 			burst.emit(1.7, 0.75)
 			return true
-		if action in ["hurt", "recover"]:
+		if action in ["recover", "knock", "plunge", "climb"]:
 			return false
 		if is_airborne():
 			if _air_jumps < 1 and action != "jump2":
@@ -645,10 +801,12 @@ func do_action(name_: String) -> bool:
 			_queued = name_
 			return false
 		parts["Root"].position.y = 0.0
+		_hopping = false
+		_hop_vel = 0.0
 		_play("jump")
 		return true
 	if name_ == "dash":
-		if action in ["hang", "hurt", "recover"]:
+		if action in ["hang", "knock", "plunge", "climb", "recover"]:
 			return false
 		if is_airborne():
 			if _air_dashes < 1 and action != "dash":
@@ -663,6 +821,8 @@ func do_action(name_: String) -> bool:
 			_queued = name_
 			return false
 		parts["Root"].position.y = 0.0
+		_hopping = false
+		_hop_vel = 0.0
 		_play("dash")
 		_advance_vel += 12.0
 		burst.emit(2.1, 0.3)
@@ -684,30 +844,43 @@ func start_hang() -> void:
 	parts["Root"].position.y = 0.0
 	_trail.visible = false
 	_queued = ""
+	_hang_auto = 0.0            # a missed step waits for the player's jump
 	_play("hang")
 
 
-## Hit by an enemy: knock-back pose, then blink-invulnerable for [inv] seconds.
-func hurt(inv := 1.6) -> void:
+## Hit by an enemy: knocked off the tread onto the step below (the controller rewinds the
+## world one step), grabs the edge, and after [hang_for] seconds hauls itself back up and runs.
+## Blink-invulnerable for [inv] seconds. Space during the hang does the big recover leap instead.
+func hurt(inv := 1.6, hang_for := 0.45) -> void:
 	parts["Root"].position.y = 0.0
+	_hopping = false
+	_hop_vel = 0.0
 	_trail.visible = false
 	_queued = ""
 	_air_jumps = 0
 	_air_dashes = 0
 	_air_attacks = 0
 	invulnerable = inv
-	_play("hurt")
+	_hang_auto = hang_for
+	_play("knock")
 
 
-## Active frames of the current attack (the arc reaches enemies then).
+## Active frames of the current attack (the arc reaches enemies then). The draw slash hits
+## from its very first frame.
 func attack_active() -> bool:
 	if action == "slam":
 		return _t >= 0.30 and _t <= 0.5
-	return action in ["attack", "attack2", "attack3", "air_attack"] and _t >= 0.03 and _t <= 0.26
+	return action in ["attack", "attack2", "attack3", "air_attack"] and _t <= 0.17
 
 
+## Only hanging from a ledge stops the climb; being hit staggers but keeps moving.
 func is_stopped() -> bool:
-	return action in ["hang", "hurt"]
+	return action in ["hang", "knock", "plunge", "climb"]
+
+
+## Ground attack hop in progress (Root lifted by the aim-lunge, falling back under gravity).
+func is_hopping() -> bool:
+	return _hopping
 
 
 func set_run_speed(scale: float) -> void:
@@ -769,19 +942,49 @@ func _process(delta: float) -> void:
 		var land_t: float = c["len"] - 0.12
 		var rate: float = parts["Root"].position.y / max(land_t - _t, 0.05)
 		parts["Root"].position.y = max(parts["Root"].position.y - rate * delta, 0.0)
+	# attack hop: ground attacks aimed upward lift the Root; it falls back under gravity and the
+	# combo can continue in the air (still "grounded" for the rules: no air-attack limit)
+	if _hopping:
+		if action in ["run", "idle", "attack", "attack2", "attack3"]:
+			parts["Root"].position.y += _hop_vel * delta
+			_hop_vel -= HOP_GRAVITY * delta
+			if parts["Root"].position.y <= 0.0:
+				parts["Root"].position.y = 0.0
+				_hop_vel = 0.0
+				_hopping = false
+		else:
+			_hopping = false
+			_hop_vel = 0.0
+	# hit knock-down: after the hang grip, haul back up automatically (a missed-step hang has
+	# _hang_auto = 0 and waits for Space)
+	if action == "hang" and _hang_auto > 0.0:
+		_hang_auto -= delta
+		if _hang_auto <= 0.0:
+			_play("climb")
+			c = _clips[_cur]
 	# clip end
 	if not c["loop"] and _t >= c["len"]:
-		if keeps_height and parts["Root"].position.y > 0.25:
+		if _cur == "knock":
+			_play("plunge")
+		elif _cur == "plunge":
+			_play("hang")
+		elif keeps_height and parts["Root"].position.y > 0.25:
 			_play("drop")              # Root offset is kept and eased down by the drop clip
 			_started_in_air = false
 		else:
-			parts["Root"].position.y = 0.0
+			if not _hopping:
+				parts["Root"].position.y = 0.0
 			_air_jumps = 0
 			_air_dashes = 0
 			_air_attacks = 0
 			_started_in_air = false
-			_play("run")
+			_play("run" if moving else "idle")
 		c = _clips[_cur]
+	# (auto-run: "idle" is only reached when the controller clears [moving], e.g. while stopped)
+	if action == "run" and not moving:
+		_play("idle")
+	elif action == "idle" and moving:
+		_play("run")
 	# forward advance: impulse from attacks, pulled back by a soft spring (the world catches up)
 	advance += _advance_vel * delta
 	_advance_vel -= (advance * 14.0 + _advance_vel * 5.5) * delta

@@ -1,6 +1,7 @@
 ## Debug settings panel: one row of toggle buttons per preset group, the active one is
 ## highlighted. Choices persist in user://settings.cfg and are restored on launch.
-## Toggle with Tab.
+## Toggle with F10 or ` (backquote). Tab is swallowed by the GUI focus navigation once a
+## panel button has focus, so it never reached _unhandled_input reliably.
 class_name DebugPanel
 extends CanvasLayer
 
@@ -30,7 +31,7 @@ func _ready() -> void:
 	vb.add_theme_constant_override("separation", 6)
 	_panel.add_child(vb)
 	var title := Label.new()
-	title.text = "DEBUG SETTINGS   [Tab] hide/show   (saved automatically)"
+	title.text = "DEBUG SETTINGS   [F10] or [`] hide/show   (saved automatically)"
 	title.add_theme_font_size_override("font_size", 13)
 	title.add_theme_color_override("font_color", Color(0.75, 0.72, 1.0))
 	vb.add_child(title)
@@ -104,7 +105,9 @@ func load_saved() -> void:
 	_panel.visible = bool(cf.get_value("ui", "visible", true))
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_TAB:
+func _input(event: InputEvent) -> void:
+	# _input (not _unhandled_input) so the toggle works even while a panel button holds focus
+	if event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_F10 or event.keycode == KEY_QUOTELEFT):
 		_panel.visible = not _panel.visible
+		get_viewport().set_input_as_handled()
 		save()

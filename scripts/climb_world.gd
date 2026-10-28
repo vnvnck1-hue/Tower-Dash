@@ -23,6 +23,10 @@ extends Node3D
 @export var lane_radius := 6.5
 
 var phase := 0.0   # 0..1 fraction of a revolution
+## Extra vertical offset (world units) added on top of the phase height. Raising the world by
+## exactly one pitch shows the floor BELOW in front of the camera (the helix repeats per pitch),
+## which is how the hit knock-down "falls one floor" without touching the phase.
+var fall_offset := 0.0
 
 
 ## Local transform (relative to this node) of the centre of step [index]; the step at
@@ -50,7 +54,7 @@ func _process(delta: float) -> void:
 func apply_phase() -> void:
 	var ang := -phase * TAU
 	rotation.y = ang
-	position.y = base_y - phase * pitch
+	position.y = base_y - phase * pitch + fall_offset
 	for n in rotate_only:
 		if is_instance_valid(n):
 			n.rotation.y = ang
