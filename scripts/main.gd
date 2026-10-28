@@ -922,7 +922,7 @@ func _spawn_goblin_at(k: float, kind: String) -> void:
 	var g: Node3D = GoblinScript.new()
 	g.build(Callable(self, "character_mat"), kind)
 	g.k_abs = k
-	g.size_scale = 1.6 * _rng.randf_range(0.7, 1.3)   # ~1x the runner on screen, ±30% per goblin
+	g.size_scale = 1.4 * _rng.randf_range(0.7, 1.3)   # painted model is taller than the old rig; ~1x the runner on screen
 	g.lateral = _rng.randf_range(-1.0, 1.0)
 	g.run_speed = _rng.randf_range(4.2, 6.5)
 	g.charge_dist = _rng.randf_range(11.0, 17.0)

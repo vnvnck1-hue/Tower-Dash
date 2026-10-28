@@ -46,37 +46,47 @@ func build(mat_factory: Callable, kind_: String) -> void:
 	var wood: Material = mat_factory.call(WOOD_LIT, WOOD_SHADOW, 0.03)
 	var eye: Material = mat_factory.call(EYE, EYE.darkened(0.4), 0.0)
 	_mats = [skin, cloth, wood]
+	# ---- Witch's Lodge "goblin_nib" segmented Tripo model (height 1.0 in model units) ----
+	# Pivots from the source scene (torso bottom, head bottom, arm shoulders, leg tops, backpack
+	# front-top). K scales the model so the leg tops land at the rig's hip height (0.62), which
+	# keeps every authored pose (hips offsets, swings, charges) valid without retuning.
+	var K := 0.62 / 0.30
+	var paint_m := ShaderMaterial.new()
+	paint_m.shader = preload("res://shaders/goblin_paint.gdshader")
+	paint_m.set_shader_parameter("paint", load("res://assets/goblin_nib/goblin_nib_paint.res"))
+	var outline := ShaderMaterial.new()
+	outline.shader = preload("res://shaders/outline.gdshader")
+	outline.set_shader_parameter("width", 0.012)
+	outline.set_shader_parameter("color", Color.BLACK)
+	paint_m.next_pass = outline
+
 	var root := _joint(self, "Root", Vector3.ZERO)
 	var hips := _joint(root, "Hips", Vector3(0, 0.62, 0))
-	_box(hips, Vector3(0.42, 0.26, 0.3), cloth, Vector3(0, 0, 0))
-	var torso := _joint(hips, "Torso", Vector3(0, 0.1, 0))
-	_box(torso, Vector3(0.48, 0.42, 0.34), skin, Vector3(0, 0.22, 0))
-	var head := _joint(torso, "Head", Vector3(0, 0.45, 0))
-	_box(head, Vector3(0.5, 0.42, 0.46), skin, Vector3(0, 0.22, 0.02))
-	_box(head, Vector3(0.1, 0.06, 0.04), eye, Vector3(0.11, 0.26, 0.26))
-	_box(head, Vector3(0.1, 0.06, 0.04), eye, Vector3(-0.11, 0.26, 0.26))
-	_box(head, Vector3(0.14, 0.1, 0.1), skin, Vector3(0, 0.14, 0.3))       # nose
-	_box(head, Vector3(0.3, 0.1, 0.06), skin, Vector3(0.36, 0.32, 0.0))    # ears
-	_box(head, Vector3(0.3, 0.1, 0.06), skin, Vector3(-0.36, 0.32, 0.0))
+	# torso pivot (0, 0.198, 0.063) -> relative to the hip joint
+	var torso := _joint(hips, "Torso", Vector3(0.0, (0.198 - 0.30) * K, 0.063 * K))
+	_part(torso, "torso", paint_m, K)
+	var head := _joint(torso, "Head", Vector3(0.0, 0.309 * K, -0.046 * K))
+	_part(head, "head", paint_m, K)
+	var pack := _joint(torso, "Backpack", Vector3(0.022 * K, 0.427 * K, -0.141 * K))
+	_part(pack, "backpack", paint_m, K)
 	for side in [["L", 1.0], ["R", -1.0]]:
 		var sx: float = side[1]
-		var ua := _joint(torso, "UpperArm" + side[0], Vector3(0.3 * sx, 0.36, 0))
-		_box(ua, Vector3(0.16, 0.34, 0.16), skin, Vector3(0, -0.17, 0))
-		var la := _joint(ua, "LowerArm" + side[0], Vector3(0, -0.34, 0))
-		_box(la, Vector3(0.15, 0.32, 0.15), skin, Vector3(0, -0.16, 0))
-		var ul := _joint(hips, "UpperLeg" + side[0], Vector3(0.12 * sx, -0.08, 0))
-		_box(ul, Vector3(0.18, 0.3, 0.18), cloth, Vector3(0, -0.15, 0))
-		var ll := _joint(ul, "LowerLeg" + side[0], Vector3(0, -0.3, 0))
-		_box(ll, Vector3(0.16, 0.28, 0.16), skin, Vector3(0, -0.14, 0))
+		var ua := _joint(torso, "UpperArm" + side[0], Vector3(0.162 * sx * K, 0.247 * K, 0.006 * K))
+		_part(ua, "arm_l" if sx > 0.0 else "arm_r", paint_m, K)
+		# the model's arm is one piece; the lower-arm joint is a hand anchor for weapons
+		var la := _joint(ua, "LowerArm" + side[0], Vector3(0.0, -0.26 * K, 0.0))
+		var ul := _joint(hips, "UpperLeg" + side[0], Vector3((0.103 if sx > 0.0 else -0.123) * K, 0.0, 0.073 * K))
+		_part(ul, "leg_l" if sx > 0.0 else "leg_r", paint_m, K)
+		_joint(ul, "LowerLeg" + side[0], Vector3(0.0, -0.15 * K, 0.0))
 	if kind == "melee":
-		var club := _joint(parts["LowerArmR"], "Weapon", Vector3(0, -0.32, 0))
+		var club := _joint(parts["LowerArmR"], "Weapon", Vector3(0, -0.05, 0))
 		_box(club, Vector3(0.1, 0.9, 0.1), wood, Vector3(0, -0.35, 0))
 		_box(club, Vector3(0.24, 0.3, 0.24), wood, Vector3(0, -0.75, 0))
 	else:
-		var bow := _joint(parts["LowerArmL"], "Weapon", Vector3(0, -0.32, 0))
+		var bow := _joint(parts["LowerArmL"], "Weapon", Vector3(0, -0.05, 0))
 		_box(bow, Vector3(0.06, 1.4, 0.08), wood, Vector3(0.0, 0.0, 0.0))
 		_box(bow, Vector3(0.02, 1.3, 0.02), cloth, Vector3(0.12, 0.0, 0.0))    # string
-		var arrow := _joint(parts["LowerArmR"], "Arrow", Vector3(0, -0.32, 0))
+		var arrow := _joint(parts["LowerArmR"], "Arrow", Vector3(0, -0.05, 0))
 		_box(arrow, Vector3(0.05, 0.05, 0.9), wood, Vector3(0, 0, 0.3))
 	for n in parts:
 		_rest[n] = [Quaternion.IDENTITY, parts[n].position]
@@ -90,6 +100,15 @@ func _joint(parent: Node3D, n: String, pos: Vector3) -> Node3D:
 	parent.add_child(j)
 	parts[n] = j
 	return j
+
+
+func _part(parent: Node3D, part: String, mat: Material, k: float) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = load("res://assets/goblin_nib/goblin_nib_%s.res" % part)
+	mi.material_override = mat
+	mi.scale = Vector3.ONE * k
+	parent.add_child(mi)
+	return mi
 
 
 func _box(parent: Node3D, size: Vector3, mat: Material, pos: Vector3) -> MeshInstance3D:
