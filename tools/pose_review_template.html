@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>플레이어 키프레임 리뷰</title>
+<style>
+:root{--bg:#1b1c20;--panel:#26272d;--line:#3a3c44;--text:#e8e8ec;--muted:#9a9ca6;--accent:#ff5a4e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "Segoe UI",Pretendard,"Malgun Gothic",sans-serif}
+header{position:sticky;top:0;z-index:20;background:#141518ee;backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+header h1{font-size:16px;margin:0 8px 0 0}
+nav{display:flex;flex-wrap:wrap;gap:4px}
+nav a{color:var(--muted);text-decoration:none;padding:2px 8px;border-radius:12px;border:1px solid var(--line);font-size:12px}
+nav a:hover{color:var(--text);border-color:var(--muted)}
+.tools{margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+button,label.btn{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:13px}
+button:hover{border-color:var(--muted)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+select{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+.swatch{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;margin-right:2px}
+.swatch.on{border-color:#fff}
+main{padding:16px;max-width:1900px;margin:0 auto}
+.howto{color:var(--muted);font-size:13px;margin:0 0 14px}
+section.clip{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin-bottom:22px;padding:14px 16px}
+.clip-head{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;margin-bottom:6px}
+.clip-head h2{margin:0;font-size:18px}
+.clip-head code{color:var(--muted);font-size:12px}
+.clip-head .desc{color:var(--muted);flex-basis:100%}
+.strip{display:flex;gap:12px;overflow-x:auto;padding:8px 2px 12px;scroll-snap-type:x proximity}
+.key{flex:0 0 auto;width:420px;background:#1f2025;border:1px solid var(--line);border-radius:8px;padding:8px;scroll-snap-align:start}
+.key.has-fb{border-color:var(--accent)}
+.key .lbl{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);margin-bottom:6px}
+.key .lbl b{color:var(--text);font-size:13px}
+.frame{position:relative;width:100%;aspect-ratio:3/2;background:#b8b8b8;border-radius:4px;overflow:hidden;touch-action:none}
+.frame img{position:absolute;inset:0;width:100%;height:100%;display:block;user-select:none;-webkit-user-drag:none}
+.frame canvas{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
+.frame .mini{position:absolute;right:4px;top:4px;display:flex;gap:4px;opacity:0;transition:opacity .15s}
+.frame:hover .mini{opacity:1}
+.frame .mini button{padding:2px 7px;font-size:11px;background:#000a;border-color:#fff3}
+textarea{width:100%;margin-top:8px;background:#141518;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px;font:13px/1.45 inherit;resize:vertical;min-height:62px}
+textarea:focus{outline:none;border-color:var(--accent)}
+.clip-note{margin-top:4px}
+.clip-note textarea{min-height:48px}
+.preview{display:flex;gap:10px;align-items:center;margin:4px 0 6px}
+.preview img{height:150px;background:#b8b8b8;border-radius:4px;display:none}
+.preview .pv-lbl{color:var(--muted);font-size:12px}
+.status{color:var(--muted);font-size:12px}
+.count{background:var(--accent);color:#fff;border-radius:10px;padding:0 7px;font-size:11px;margin-left:4px}
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;max-width:760px;width:90vw}
+dialog textarea{min-height:320px;font-family:Consolas,monospace;font-size:12px}
+.hint{color:var(--muted);font-size:12px;margin:0 0 10px}
+@media (max-width:600px){.key{width:88vw}}
+</style>
+</head>
+<body>
+<header>
+  <h1>플레이어 키프레임 리뷰</h1>
+  <nav id="nav"></nav>
+  <div class="tools">
+    <span class="status" id="status">자동 저장됨</span>
+    <span id="pen-colors"></span>
+    <select id="pen-size" title="펜 굵기"><option value="3">가는 펜</option><option value="5" selected>보통 펜</option><option value="9">굵은 펜</option></select>
+    <button id="eraser" title="지우개 (E)">지우개</button>
+    <button id="export" class="primary">피드백 내보내기 (JSON)</button>
+    <label class="btn">불러오기<input id="import" type="file" accept="application/json" hidden></label>
+    <button id="summary">요약 보기</button>
+    <button id="clear-all">전체 초기화</button>
+  </div>
+</header>
+<main id="main">
+  <p class="howto">이미지 위에 바로 드래그하면 스케치가 그려집니다 (색 1~6, 지우개 E, 카드 우상단 ↶ 되돌리기 / 지우기 / ⤢ 크게). 코멘트와 스케치는 이 브라우저에 자동 저장되고, 「피드백 내보내기」를 누르면 <code>pose_feedback.json</code> 으로 저장됩니다. 그 파일을 프로젝트 폴더에 두면 그대로 읽어서 반영할 수 있습니다.</p>
+</main>
+<dialog id="dlg"><p class="hint">코멘트가 있는 키프레임만 모은 요약입니다. 복사해서 그대로 전달하면 됩니다. (스케치는 JSON 내보내기에 포함)</p><textarea id="dlg-text"></textarea><p style="text-align:right;margin:10px 0 0"><button id="dlg-copy">복사</button> <button id="dlg-close">닫기</button></p></dialog>
+<script>
+const DATA = __DATA__;
+const STORE = "pose_review_" + "__STAMP__";   // per build: a regenerated sheet starts with a clean review
+const CW = 960, CH = __IMGH__;   // sketch canvas resolution (matches the embedded image)
+let fb = {};                      // "clip#index" -> {comment, sketch(dataURL)} ; "clip" -> {note}
+try { fb = JSON.parse(localStorage.getItem(STORE) || "{}"); } catch (e) { fb = {}; }
+const pen = { color: "#ff3b30", size: 5, eraser: false };
+const COLORS = ["#ff3b30", "#2f7cff", "#ffd60a", "#34c759", "#ffffff", "#111111"];
+const $ = (s, r = document) => r.querySelector(s);
+const el = (t, a = {}, ...kids) => { const n = document.createElement(t); for (const k in a) { if (k === "class") n.className = a[k]; else if (k.startsWith("on")) n.addEventListener(k.slice(2), a[k]); else n.setAttribute(k, a[k]); } for (const c of kids) n.append(c); return n; };
+let saveT = null;
+function save() { clearTimeout(saveT); $("#status").textContent = "저장 중…"; saveT = setTimeout(() => { try { localStorage.setItem(STORE, JSON.stringify(fb)); $("#status").textContent = "자동 저장됨"; } catch (e) { $("#status").textContent = "저장 실패 (용량) — JSON 으로 내보내세요"; } updateCounts(); }, 250); }
+function kid(c, i) { return c + "#" + i; }
+function fmt(t) { return t.toFixed(2) + "s"; }
+
+// ---- build
+const nav = $("#nav"), main = $("#main");
+for (const clip of DATA) {
+  nav.append(el("a", { href: "#clip-" + clip.id, id: "nav-" + clip.id }, clip.name));
+  const sec = el("section", { class: "clip", id: "clip-" + clip.id });
+  sec.append(el("div", { class: "clip-head" },
+    el("h2", {}, clip.name), el("code", {}, clip.id + " · 키 " + clip.keys.length + "개 · 길이 " + fmt(clip.len)),
+    el("span", { class: "desc" }, clip.desc)));
+  // preview player: steps through the keys, holding each for its own duration, slowed down
+  const pvImg = el("img"), pvLbl = el("span", { class: "pv-lbl" }, "키 타이밍대로 재생 (0.4배속, 이징 없이 키만)");
+  let playing = null;
+  const playBtn = el("button", { onclick: () => {
+    if (playing) { clearTimeout(playing); playing = null; playBtn.textContent = "▶ 재생"; pvImg.style.display = "none"; return; }
+    pvImg.style.display = "block"; playBtn.textContent = "■ 정지";
+    let i = 0;
+    const step = () => {
+      const k = clip.keys[i]; pvImg.src = k.src; pvLbl.textContent = "키 " + (i + 1) + "/" + clip.keys.length + " · " + fmt(k.t);
+      const next = clip.keys[i + 1]; const hold = next ? (next.t - k.t) : 0.35;
+      i = (i + 1) % clip.keys.length;
+      playing = setTimeout(step, Math.max(hold, 0.05) * 1000 / 0.4);
+    };
+    step();
+  } }, "▶ 재생");
+  sec.append(el("div", { class: "preview" }, playBtn, pvImg, pvLbl));
+  const strip = el("div", { class: "strip" });
+  clip.keys.forEach((k, idx) => strip.append(buildKey(clip, k, idx)));
+  sec.append(strip);
+  const noteId = clip.id;
+  const note = el("textarea", { placeholder: "이 동작 전체에 대한 코멘트 (타이밍, 전체 느낌, 빠진 키 등)", oninput: e => { fb[noteId] = { note: e.target.value }; save(); } });
+  note.value = (fb[noteId] && fb[noteId].note) || "";
+  sec.append(el("div", { class: "clip-note" }, note));
+  main.append(sec);
+}
+
+function buildKey(clip, k, idx) {
+  const id = kid(clip.id, k.i);
+  const card = el("div", { class: "key", id: "key-" + clip.id + "-" + k.i });
+  const next = clip.keys[idx + 1];
+  const hold = next ? "다음 키까지 " + fmt(next.t - k.t) : (clip.id === "run" || clip.id === "hang" ? "루프 → 키 1" : "마지막 키");
+  card.append(el("div", { class: "lbl" }, el("span", {}, el("b", {}, "키 " + (idx + 1) + " / " + clip.keys.length), "  ·  t = " + fmt(k.t)), el("span", {}, hold)));
+  const img = el("img", { src: k.src, draggable: "false" });
+  const cv = el("canvas", { width: CW, height: CH });
+  const ctx = cv.getContext("2d");
+  if (fb[id] && fb[id].sketch) { const im = new Image(); im.onload = () => ctx.drawImage(im, 0, 0); im.src = fb[id].sketch; }
+  const undo = [];
+  const pushUndo = () => { undo.push(cv.toDataURL()); if (undo.length > 20) undo.shift(); };
+  const commit = () => { fb[id] = Object.assign({}, fb[id], { sketch: isBlank(cv) ? "" : cv.toDataURL("image/png") }); save(); mark(); };
+  let drawing = false, last = null;
+  const pos = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * CW / r.width, y: (e.clientY - r.top) * CH / r.height }; };
+  cv.addEventListener("pointerdown", e => { if (e.button !== 0 && e.pointerType === "mouse") return; cv.setPointerCapture(e.pointerId); pushUndo(); drawing = true; last = pos(e); dot(last); e.preventDefault(); });
+  cv.addEventListener("pointermove", e => { if (!drawing) return; const p = pos(e); line(last, p); last = p; });
+  const end = () => { if (!drawing) return; drawing = false; commit(); };
+  cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end); cv.addEventListener("lostpointercapture", end);
+  function style() { ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.globalCompositeOperation = pen.eraser ? "destination-out" : "source-over"; ctx.strokeStyle = pen.color; ctx.fillStyle = pen.color; ctx.lineWidth = (pen.eraser ? pen.size * 4 : pen.size) * 1.6; }
+  function dot(p) { style(); ctx.beginPath(); ctx.arc(p.x, p.y, ctx.lineWidth / 2, 0, Math.PI * 2); ctx.fill(); }
+  function line(a, b) { style(); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+  const mini = el("div", { class: "mini" },
+    el("button", { title: "되돌리기", onclick: () => { const d = undo.pop(); if (d === undefined) return; const im = new Image(); im.onload = () => { ctx.clearRect(0, 0, CW, CH); ctx.drawImage(im, 0, 0); commit(); }; im.src = d; } }, "↶"),
+    el("button", { title: "스케치 지우기", onclick: () => { pushUndo(); ctx.clearRect(0, 0, CW, CH); commit(); } }, "지우기"),
+    el("button", { title: "크게 보기", onclick: () => openBig(img.src, cv) }, "⤢"));
+  card.append(el("div", { class: "frame" }, img, cv, mini));
+  const ta = el("textarea", { placeholder: "이 키프레임 코멘트… (포즈, 실루엣, 과장, 타이밍)", oninput: e => { fb[id] = Object.assign({}, fb[id], { comment: e.target.value }); save(); mark(); } });
+  ta.value = (fb[id] && fb[id].comment) || "";
+  card.append(ta);
+  function mark() { const f = fb[id] || {}; card.classList.toggle("has-fb", !!(f.comment || f.sketch)); }
+  mark();
+  return card;
+}
+function isBlank(cv) { const d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data; for (let i = 3; i < d.length; i += 4 * 7) if (d[i]) return false; return true; }
+function openBig(src, cv) {
+  const w = window.open("", "_blank"); if (!w) return;
+  w.document.write('<body style="margin:0;background:#222;display:grid;place-items:center;height:100vh"><div style="position:relative"><img src="' + src + '" style="max-width:96vw;max-height:96vh;display:block"><img src="' + cv.toDataURL() + '" style="position:absolute;inset:0;width:100%;height:100%"></div></body>');
+}
+
+// ---- header tools
+const pc = $("#pen-colors");
+COLORS.forEach(c => pc.append(el("button", { class: "swatch", "data-c": c, style: "background:" + c, title: c, onclick: () => { pen.color = c; pen.eraser = false; refreshTools(); } })));
+$("#pen-size").addEventListener("change", e => pen.size = +e.target.value);
+$("#eraser").addEventListener("click", () => { pen.eraser = !pen.eraser; refreshTools(); });
+function refreshTools() { document.querySelectorAll(".swatch").forEach(b => b.classList.toggle("on", !pen.eraser && b.dataset.c === pen.color)); $("#eraser").style.borderColor = pen.eraser ? "var(--accent)" : ""; $("#eraser").textContent = pen.eraser ? "지우개 ON" : "지우개"; }
+refreshTools();
+document.addEventListener("keydown", e => { if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return; if (e.key === "e" || e.key === "E") { pen.eraser = !pen.eraser; refreshTools(); } const n = parseInt(e.key); if (n >= 1 && n <= COLORS.length) { pen.color = COLORS[n - 1]; pen.eraser = false; refreshTools(); } });
+
+function updateCounts() {
+  for (const clip of DATA) {
+    let n = 0; for (const k of clip.keys) { const f = fb[kid(clip.id, k.i)]; if (f && (f.comment || f.sketch)) n++; }
+    if (fb[clip.id] && fb[clip.id].note) n++;
+    const a = $("#nav-" + clip.id); a.innerHTML = ""; a.append(clip.name); if (n) a.append(el("span", { class: "count" }, String(n)));
+  }
+}
+updateCounts();
+
+function buildExport() {
+  const out = { exported: new Date().toISOString(), clips: [] };
+  for (const clip of DATA) {
+    const c = { id: clip.id, name: clip.name, note: (fb[clip.id] && fb[clip.id].note) || "", keys: [] };
+    for (const k of clip.keys) { const f = fb[kid(clip.id, k.i)] || {}; if (f.comment || f.sketch) c.keys.push({ index: k.i, time: k.t, comment: f.comment || "", sketch: f.sketch || "" }); }
+    if (c.note || c.keys.length) out.clips.push(c);
+  }
+  return out;
+}
+$("#export").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(buildExport(), null, 2)], { type: "application/json" });
+  const a = el("a", { href: URL.createObjectURL(blob), download: "pose_feedback.json" }); document.body.append(a); a.click(); a.remove();
+});
+$("#import").addEventListener("change", e => {
+  const f = e.target.files[0]; if (!f) return;
+  f.text().then(t => { const j = JSON.parse(t); for (const c of j.clips || []) { if (c.note) fb[c.id] = { note: c.note }; for (const k of c.keys || []) fb[kid(c.id, k.index)] = { comment: k.comment || "", sketch: k.sketch || "" }; } localStorage.setItem(STORE, JSON.stringify(fb)); location.reload(); });
+});
+$("#summary").addEventListener("click", () => {
+  const j = buildExport(); let s = "# 플레이어 키프레임 피드백\n\n";
+  for (const c of j.clips) { s += "## " + c.name + " (" + c.id + ")\n"; if (c.note) s += "- 전체: " + c.note.replace(/\n/g, " ") + "\n"; for (const k of c.keys) s += "- 키 " + (k.index + 1) + " (t=" + k.time.toFixed(2) + "s)" + (k.sketch ? " [스케치 있음]" : "") + ": " + (k.comment || "").replace(/\n/g, " ") + "\n"; s += "\n"; }
+  if (!j.clips.length) s += "(아직 코멘트가 없습니다)";
+  $("#dlg-text").value = s; $("#dlg").showModal();
+});
+$("#dlg-copy").addEventListener("click", () => navigator.clipboard.writeText($("#dlg-text").value));
+$("#dlg-close").addEventListener("click", () => $("#dlg").close());
+$("#clear-all").addEventListener("click", () => { if (confirm("모든 코멘트와 스케치를 지울까요?")) { localStorage.removeItem(STORE); location.reload(); } });
+</script>
+</body>
+</html>
