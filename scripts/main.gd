@@ -100,6 +100,15 @@ const BASE_SECONDS_PER_TURN := 16.0     # 64 steps / 16 s = 4 steps per second
 const SPEED_MIN := 0.5
 const SPEED_MAX := 2.2
 var speed_mult := 1.0
+## Momentum: clean running (no hits, no falls) slowly builds a multiplier on top of speed_mult, so the
+## top speed caps at MOMENTUM_MAX x SPEED_MAX; any hit drops it back (quickly eased, never stepped).
+## While momentum is held at full, a light motion blur stays on.
+const MOMENTUM_MAX := 2.0
+const MOMENTUM_RAMP := 24.0      # seconds of clean running to reach full momentum
+const TOP_BLUR := 0.5            # top-speed blur strength, as a share of the dash blur
+var momentum := 1.0
+var _streak_t := 0.0
+var _top_blur := 0.0
 var _dash_left := 0.0
 var _last_step := -1
 var _demo_action := ""
@@ -1143,6 +1152,7 @@ func _hurt_runner() -> void:
 	lives -= 1
 	_hearts.set_lives(max(lives, 0))
 	runner.hurt(1.6)
+	_streak_t = 0.0
 	_shake = 0.25
 	if lives <= 0:
 		_banner_label.text = "GAME OVER"
@@ -1700,7 +1710,14 @@ func _process(delta: float) -> void:
 		speed_mult = max(SPEED_MIN, speed_mult - 1.6 * delta)
 	else:
 		speed_mult = move_toward(speed_mult, 1.0, 0.6 * delta)
-	runner.moving = true          # auto-run (the stopped states are their own clips, never idle)
+	# momentum: builds along a smoothstep while running clean, eases down fast after a hit
+	if not runner.is_stopped() and _hitstop <= 0.0:
+		_streak_t = min(_streak_t + delta, MOMENTUM_RAMP)
+	var m_target: float = 1.0 + (MOMENTUM_MAX - 1.0) * smoothstep(0.0, MOMENTUM_RAMP, _streak_t)
+	momentum = move_toward(momentum, m_target, (0.2 if m_target > momentum else 2.5) * delta)
+	var at_top: bool = momentum >= MOMENTUM_MAX - 0.02
+	_top_blur = move_toward(_top_blur, 1.0 if at_top else 0.0, delta / (0.8 if at_top else 0.3))
+	runner.moving = true         # auto-run (the stopped states are their own clips, never idle)
 	runner.demo_aim = _demo_action != "" and _demo_action != "mouse"   # "mouse" uses the real cursor
 	# speed bursts from attacks (small) and dashes (large), each with its own eased envelope
 	var burst := 1.0
@@ -1715,7 +1732,7 @@ func _process(delta: float) -> void:
 		if b[1] > 1.8:
 			dcurve = max(dcurve, e)
 	_bursts = keep
-	world.seconds_per_turn = BASE_SECONDS_PER_TURN / (speed_mult * burst)
+	world.seconds_per_turn = BASE_SECONDS_PER_TURN / (speed_mult * momentum * burst)
 	world.climb = 0.0 if runner.is_stopped() else 1.0
 	# multi-kill slow motion: Engine.time_scale scales every delta in the game (world, poses, fx),
 	# so motion stays continuous instead of dropping frames
@@ -1766,7 +1783,7 @@ func _process(delta: float) -> void:
 		var m: ShaderMaterial = _grade_rect.material
 		var amounts: Array = [0.009, 0.014, 0.010]
 		var amt: float = amounts[blur_preset]
-		m.set_shader_parameter("blur_amount", amt * bcurve)
+		m.set_shader_parameter("blur_amount", amt * max(bcurve, TOP_BLUR * smoothstep(0.0, 1.0, _top_blur)))
 		m.set_shader_parameter("blur_mode", blur_preset)
 		var cp := cam.unproject_position(runner.global_position + Vector3(0, 1.4, 0)) / Vector2(get_viewport().get_visible_rect().size)
 		m.set_shader_parameter("blur_center", cp)
@@ -1809,6 +1826,7 @@ func _process(delta: float) -> void:
 		lives -= 1
 		_hearts.set_lives(max(lives, 0))
 		runner.start_hang()
+		_streak_t = 0.0
 		_shake = 0.2
 		if lives <= 0:
 			_banner_label.text = "GAME OVER"
@@ -1820,7 +1838,7 @@ func _process(delta: float) -> void:
 	# forward (up the stairs = world +X at the runner) and camera direction, in rig-local space
 	var inv := runner.global_basis.inverse()
 	runner.set_frame(inv * Vector3(runner.facing, 0, 0), inv * (cam.global_position - runner.global_position))
-	runner.set_run_speed(speed_mult)
+	runner.set_run_speed(speed_mult * momentum)
 	runner.lean = clamp((speed_mult - 1.0) / (SPEED_MAX - 1.0), 0.0, 1.0)
 	# feet on the current tread; lane radius = middle of the stair width
 	var lane := TOWER_R + STAIR_W * 0.5
@@ -2050,7 +2068,13 @@ func _take_poses(dir: String) -> void:
 	var manifest := []
 	for i in 5:
 		await get_tree().process_frame
+	var only := ""   # --poseclip=NAME: capture just that clip
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--poseclip="):
+			only = a.trim_prefix("--poseclip=")
 	for clip in runner.clip_names():
+		if only != "" and clip != only:
+			continue
 		var n: int = runner.key_count(clip)
 		# union of the rig's mesh bounds over every key -> one framing for the whole clip
 		var box := AABB()
@@ -2088,6 +2112,14 @@ func _take_poses(dir: String) -> void:
 			get_viewport().get_texture().get_image().save_png("%s/%s" % [dir, file])
 			manifest.append({"clip": clip, "index": i, "count": n, "time": runner.key_time(clip, i),
 				"len": runner.clip_len(clip), "file": file})
+		# --posemotion: also render the eased clip (what the player sees) at 60 fps, studio framing
+		if "--posemotion" in OS.get_cmdline_user_args():
+			var frames := int(ceil(runner.clip_len(clip) * 60.0))
+			for i in frames:
+				runner._apply(runner._sample(clip, float(i) / 60.0))
+				for j in 2:
+					await get_tree().process_frame
+				get_viewport().get_texture().get_image().save_png("%s/%s_m%03d.png" % [dir, clip, i])
 	var f := FileAccess.open("%s/poses.json" % dir, FileAccess.WRITE)
 	f.store_string(JSON.stringify(manifest, "  "))
 	f.close()

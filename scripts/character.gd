@@ -279,28 +279,21 @@ static func _m(a: Dictionary, b: Dictionary) -> Dictionary:
 
 
 func _build_clips() -> void:
-	# ---- run (loop): big stride, strong forward lean; extra lean is added by the controller ----
+	# ---- run (loop): cartoon sprint after the 8-key reference GIF (contact -> down -> crunched
+	# pass -> diagonal drive, mirrored), 0.08 s per key. Authored as world angles (see
+	# tools/run_gen.py): the stance foot is planted at y=0, the trailing heel kicks up to the hip,
+	# the free (left) arm pumps elbow-high behind / fist up in front, the sword arm swings less and
+	# the wrist counter-rotates so the greatsword trails behind the body. Hips/torso counter-twist.
 	_clip("run", [
-		[0.00, {"@Hips": Vector3(0, 0.98, 0), "Torso": Vector3(-32, 0, 0), "Head": Vector3(14, 0, 0),
-			"UpperLegR": Vector3(80, 0, 0), "LowerLegR": Vector3(-25, 0, 0), "UpperLegL": Vector3(-60, 0, 0), "LowerLegL": Vector3(-75, 0, 0),
-			"UpperArmL": Vector3(75, 0, 8), "LowerArmL": Vector3(-85, 0, 0), "UpperArmR": Vector3(-65, 0, -8), "LowerArmR": Vector3(-50, 0, 0), "Sword": Vector3(45, 0, 0),
-			"Cape0": Vector3(-80, 0, 0), "Cape1": Vector3(-25, 0, 0), "Cape2": Vector3(20, 0, 0)}],
-		[0.12, {"@Hips": Vector3(0, 0.86, 0), "Torso": Vector3(-24, 0, 0), "Head": Vector3(6, 0, 0),
-			"UpperLegR": Vector3(10, 0, 0), "LowerLegR": Vector3(-100, 0, 0), "UpperLegL": Vector3(5, 0, 0), "LowerLegL": Vector3(-20, 0, 0),
-			"UpperArmL": Vector3(10, 0, 8), "LowerArmL": Vector3(-70, 0, 0), "UpperArmR": Vector3(-5, 0, -8), "LowerArmR": Vector3(-60, 0, 0), "Sword": Vector3(-30, 0, 0),
-			"Cape0": Vector3(-45, 0, 0), "Cape1": Vector3(-40, 0, 0), "Cape2": Vector3(-30, 0, 0)}],
-		[0.25, {"@Hips": Vector3(0, 1.04, 0), "Torso": Vector3(-34, 0, 0), "Head": Vector3(16, 0, 0),
-			"UpperLegL": Vector3(80, 0, 0), "LowerLegL": Vector3(-25, 0, 0), "UpperLegR": Vector3(-60, 0, 0), "LowerLegR": Vector3(-75, 0, 0),
-			"UpperArmR": Vector3(75, 0, -8), "LowerArmR": Vector3(-85, 0, 0), "Sword": Vector3(-40, 0, 0), "UpperArmL": Vector3(-65, 0, 8), "LowerArmL": Vector3(-50, 0, 0),
-			"Cape0": Vector3(-90, 0, 0), "Cape1": Vector3(-10, 0, 0), "Cape2": Vector3(30, 0, 0)}],
-		[0.37, {"@Hips": Vector3(0, 0.86, 0), "Torso": Vector3(-24, 0, 0), "Head": Vector3(6, 0, 0),
-			"UpperLegL": Vector3(10, 0, 0), "LowerLegL": Vector3(-100, 0, 0), "UpperLegR": Vector3(5, 0, 0), "LowerLegR": Vector3(-20, 0, 0),
-			"UpperArmR": Vector3(10, 0, -8), "LowerArmR": Vector3(-70, 0, 0), "Sword": Vector3(-30, 0, 0), "UpperArmL": Vector3(-5, 0, 8), "LowerArmL": Vector3(-60, 0, 0),
-			"Cape0": Vector3(-50, 0, 0), "Cape1": Vector3(-35, 0, 0), "Cape2": Vector3(-35, 0, 0)}],
-		[0.50, {"@Hips": Vector3(0, 0.98, 0), "Torso": Vector3(-32, 0, 0), "Head": Vector3(14, 0, 0),
-			"UpperLegR": Vector3(80, 0, 0), "LowerLegR": Vector3(-25, 0, 0), "UpperLegL": Vector3(-60, 0, 0), "LowerLegL": Vector3(-75, 0, 0),
-			"UpperArmL": Vector3(75, 0, 8), "LowerArmL": Vector3(-85, 0, 0), "UpperArmR": Vector3(-65, 0, -8), "LowerArmR": Vector3(-50, 0, 0), "Sword": Vector3(45, 0, 0),
-			"Cape0": Vector3(-80, 0, 0), "Cape1": Vector3(-25, 0, 0), "Cape2": Vector3(20, 0, 0)}],
+		[0.00, {"@Hips": Vector3(0, 0.907, 0), "Hips": Vector3(0, -12, 0), "Torso": Vector3(-28, 22, 0), "Head": Vector3(18, -11, 0), "UpperLegR": Vector3(45, 0, 0), "LowerLegR": Vector3(-9, 0, 0), "UpperLegL": Vector3(-60, 0, 0), "LowerLegL": Vector3(-100, 0, 0), "UpperArmR": Vector3(-122, 0, -10), "LowerArmR": Vector3(55, 0, 0), "Sword": Vector3(-5, 0, 0), "UpperArmL": Vector3(58, 0, 10), "LowerArmL": Vector3(135, 0, 0), "Cape0": Vector3(-72, 0, 0), "Cape1": Vector3(-20, 0, 0), "Cape2": Vector3(20, 0, 0)}],   # contact R
+		[0.08, {"@Hips": Vector3(0, 0.874, 0), "Hips": Vector3(0, -6, 0), "Torso": Vector3(-42, 12, 0), "Head": Vector3(28, -6, 0), "UpperLegR": Vector3(25, 0, 0), "LowerLegR": Vector3(-80, 0, 0), "UpperLegL": Vector3(-30, 0, 0), "LowerLegL": Vector3(-120, 0, 0), "UpperArmR": Vector3(-83, 0, -10), "LowerArmR": Vector3(65, 0, 0), "Sword": Vector3(-45, 0, 0), "UpperArmL": Vector3(57, 0, 10), "LowerArmL": Vector3(135, 0, 0), "Cape0": Vector3(-48, 0, 0), "Cape1": Vector3(-35, 0, 0), "Cape2": Vector3(-25, 0, 0)}],   # down R
+		[0.16, {"@Hips": Vector3(0, 0.874, 0), "Hips": Vector3(0, 0, 0), "Torso": Vector3(-55, 0, 0), "Head": Vector3(40, 0, 0), "UpperLegR": Vector3(-25, 0, 0), "LowerLegR": Vector3(-30, 0, 0), "UpperLegL": Vector3(70, 0, 0), "LowerLegL": Vector3(-85, 0, 0), "UpperArmR": Vector3(-15, 0, -10), "LowerArmR": Vector3(80, 0, 0), "Sword": Vector3(-120, 0, 0), "UpperArmL": Vector3(15, 0, 10), "LowerArmL": Vector3(100, 0, 0), "Cape0": Vector3(-30, 0, 0), "Cape1": Vector3(-10, 0, 0), "Cape2": Vector3(30, 0, 0)}],   # pass R
+		[0.24, {"@Hips": Vector3(0, 0.93, 0), "Hips": Vector3(0, 10, 0), "Torso": Vector3(-52, -18, 0), "Head": Vector3(32, 9, 0), "UpperLegR": Vector3(-45, 0, 0), "LowerLegR": Vector3(0, 0, 0), "UpperLegL": Vector3(98, 0, 0), "LowerLegL": Vector3(-98, 0, 0), "UpperArmR": Vector3(37, 0, -10), "LowerArmR": Vector3(115, 0, 0), "Sword": Vector3(-225, 0, 0), "UpperArmL": Vector3(-83, 0, 10), "LowerArmL": Vector3(35, 0, 0), "Cape0": Vector3(-53, 0, 0), "Cape1": Vector3(15, 0, 0), "Cape2": Vector3(-20, 0, 0)}],   # drive R
+		[0.32, {"@Hips": Vector3(0, 0.907, 0), "Hips": Vector3(0, 12, 0), "Torso": Vector3(-28, -22, 0), "Head": Vector3(18, 11, 0), "UpperLegL": Vector3(45, 0, 0), "LowerLegL": Vector3(-9, 0, 0), "UpperLegR": Vector3(-60, 0, 0), "LowerLegR": Vector3(-100, 0, 0), "UpperArmR": Vector3(28, 0, -10), "LowerArmR": Vector3(120, 0, 0), "Sword": Vector3(-250, 0, 0), "UpperArmL": Vector3(-122, 0, 10), "LowerArmL": Vector3(55, 0, 0), "Cape0": Vector3(-72, 0, 0), "Cape1": Vector3(-20, 0, 0), "Cape2": Vector3(20, 0, 0)}],   # contact L
+		[0.40, {"@Hips": Vector3(0, 0.874, 0), "Hips": Vector3(0, 6, 0), "Torso": Vector3(-42, -12, 0), "Head": Vector3(28, 6, 0), "UpperLegL": Vector3(25, 0, 0), "LowerLegL": Vector3(-80, 0, 0), "UpperLegR": Vector3(-30, 0, 0), "LowerLegR": Vector3(-120, 0, 0), "UpperArmR": Vector3(22, 0, -10), "LowerArmR": Vector3(120, 0, 0), "Sword": Vector3(-225, 0, 0), "UpperArmL": Vector3(-88, 0, 10), "LowerArmL": Vector3(60, 0, 0), "Cape0": Vector3(-48, 0, 0), "Cape1": Vector3(-35, 0, 0), "Cape2": Vector3(-25, 0, 0)}],   # down L
+		[0.48, {"@Hips": Vector3(0, 0.874, 0), "Hips": Vector3(0, 0, 0), "Torso": Vector3(-55, 0, 0), "Head": Vector3(40, 0, 0), "UpperLegL": Vector3(-25, 0, 0), "LowerLegL": Vector3(-30, 0, 0), "UpperLegR": Vector3(70, 0, 0), "LowerLegR": Vector3(-85, 0, 0), "UpperArmR": Vector3(-35, 0, -10), "LowerArmR": Vector3(80, 0, 0), "Sword": Vector3(-100, 0, 0), "UpperArmL": Vector3(-5, 0, 10), "LowerArmL": Vector3(100, 0, 0), "Cape0": Vector3(-30, 0, 0), "Cape1": Vector3(-10, 0, 0), "Cape2": Vector3(30, 0, 0)}],   # pass L
+		[0.56, {"@Hips": Vector3(0, 0.93, 0), "Hips": Vector3(0, -10, 0), "Torso": Vector3(-52, 18, 0), "Head": Vector3(32, -9, 0), "UpperLegL": Vector3(-45, 0, 0), "LowerLegL": Vector3(0, 0, 0), "UpperLegR": Vector3(98, 0, 0), "LowerLegR": Vector3(-98, 0, 0), "UpperArmR": Vector3(-88, 0, -10), "LowerArmR": Vector3(50, 0, 0), "Sword": Vector3(-10, 0, 0), "UpperArmL": Vector3(92, 0, 10), "LowerArmL": Vector3(110, 0, 0), "Cape0": Vector3(-53, 0, 0), "Cape1": Vector3(15, 0, 0), "Cape2": Vector3(-20, 0, 0)}],   # drive L
+		[0.64, {"@Hips": Vector3(0, 0.907, 0), "Hips": Vector3(0, -12, 0), "Torso": Vector3(-28, 22, 0), "Head": Vector3(18, -11, 0), "UpperLegR": Vector3(45, 0, 0), "LowerLegR": Vector3(-9, 0, 0), "UpperLegL": Vector3(-60, 0, 0), "LowerLegL": Vector3(-100, 0, 0), "UpperArmR": Vector3(-122, 0, -10), "LowerArmR": Vector3(55, 0, 0), "Sword": Vector3(-5, 0, 0), "UpperArmL": Vector3(58, 0, 10), "LowerArmL": Vector3(135, 0, 0), "Cape0": Vector3(-72, 0, 0), "Cape1": Vector3(-20, 0, 0), "Cape2": Vector3(20, 0, 0)}],   # loop
 	], true)
 
 	# ---- idle (loop): ready stance with a slow breath ----

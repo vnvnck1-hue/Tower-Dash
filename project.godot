@@ -5,6 +5,8 @@ config_version=5
 
 config/name="TowerClimb"
 run/main_scene="res://main.tscn"
+config/icon="res://icon.png"
+config/windows_native_icon="res://icon.ico"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
 [display]
