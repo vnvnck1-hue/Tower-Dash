@@ -6,7 +6,7 @@
 ## All attacks lunge forward (attack == movement), the dash is a very short, fast forward
 ## leap in the classic cartoon pose, jump/dash/attack can cancel into each other with a
 ## small input window so there is almost no dead time between actions.
-class_name RunnerCharacter
+# class_name RunnerCharacter  # backup copy: must not shadow scripts/character.gd
 extends Node3D
 
 signal burst(peak: float, duration: float)   # world speed burst request

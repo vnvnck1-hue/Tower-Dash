@@ -1,0 +1,904 @@
+[gd_resource type="VisualShader" format=3]
+
+[ext_resource type="Texture2D" path="res://textures/slash_whip_energy.png" id="1_rl08r"]
+[ext_resource type="Texture2D" path="res://textures/slash_whip_shape.png" id="2_c8fqw"]
+
+[sub_resource type="VisualShaderNodeFloatParameter" id="VisualShaderNodeFloatParameter_cythm"]
+resource_name = "streak_strength"
+linked_parent_graph_frame = 115
+parameter_name = "streak_strength"
+default_value_enabled = true
+default_value = 0.9
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_6p48w"]
+resource_name = "Gap depth"
+default_input_values = [0, 0.0, 1, 0.5]
+linked_parent_graph_frame = 122
+operator = 2
+
+[sub_resource type="VisualShaderNodeMix" id="VisualShaderNodeMix_squs7"]
+resource_name = "Moving dark bands"
+default_input_values = [0, Vector3(0, 0, 0), 1, Vector3(1, 1, 1), 2, 0.5]
+linked_parent_graph_frame = 122
+op_type = 4
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_v4k7w"]
+resource_name = "Fine streak weight"
+default_input_values = [0, 0.0, 1, 0.6]
+linked_parent_graph_frame = 122
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_obubn"]
+resource_name = "Two streak currents"
+linked_parent_graph_frame = 122
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_r3km7"]
+resource_name = "Preset streak strength"
+linked_parent_graph_frame = 122
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatFunc" id="VisualShaderNodeFloatFunc_88ny2"]
+resource_name = "Bound streaks"
+linked_parent_graph_frame = 122
+function = 18
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_blafe"]
+resource_name = "Streak brightness"
+default_input_values = [0, 0.0, 1, 0.55]
+linked_parent_graph_frame = 122
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_7jdr3"]
+resource_name = "Less flash in the tail"
+default_input_values = [0, 0.0, 1, 0.65]
+linked_parent_graph_frame = 122
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_sdlkt"]
+resource_name = "Tail streak floor"
+default_input_values = [0, 0.0, 1, 0.35]
+linked_parent_graph_frame = 122
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_7p44h"]
+resource_name = "Streaks grow toward the sword"
+linked_parent_graph_frame = 122
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatParameter" id="VisualShaderNodeFloatParameter_emwhl"]
+resource_name = "tear_strength"
+linked_parent_graph_frame = 115
+parameter_name = "tear_strength"
+default_value_enabled = true
+default_value = 0.7
+
+[sub_resource type="VisualShaderNodeMix" id="VisualShaderNodeMix_yofqu"]
+resource_name = "Flowing pale streaks"
+default_input_values = [0, Vector3(0, 0, 0), 1, Vector3(1, 1, 1), 2, 0.5]
+linked_parent_graph_frame = 122
+op_type = 4
+
+[sub_resource type="VisualShaderNodeMix" id="VisualShaderNodeMix_1a54p"]
+resource_name = "Highlight needles"
+default_input_values = [0, Vector3(0, 0, 0), 1, Vector3(1, 1, 1), 2, 0.5]
+linked_parent_graph_frame = 122
+op_type = 4
+
+[sub_resource type="VisualShaderNodeSmoothStep" id="VisualShaderNodeSmoothStep_ee4ej"]
+resource_name = "At the blade"
+default_input_values = [0, 0.88, 1, 1.0, 2, 0.5]
+linked_parent_graph_frame = 122
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_6ui3e"]
+resource_name = "Blade glow"
+default_input_values = [0, 0.0, 1, 0.55]
+linked_parent_graph_frame = 122
+operator = 2
+
+[sub_resource type="VisualShaderNodeMix" id="VisualShaderNodeMix_m3tmt"]
+resource_name = "Bright at the sword"
+default_input_values = [0, Vector3(0, 0, 0), 1, Vector3(1, 1, 1), 2, 0.5]
+linked_parent_graph_frame = 122
+op_type = 4
+
+[sub_resource type="VisualShaderNodeFrame" id="VisualShaderNodeFrame_vcuc6"]
+title = "01 Arc UV and attack clock"
+tint_color_enabled = true
+tint_color = Color(0.08, 0.23, 0.22, 0.65)
+attached_nodes = PackedInt32Array(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
+
+[sub_resource type="VisualShaderNodeFrame" id="VisualShaderNodeFrame_4awbr"]
+title = "02 Primary current"
+tint_color_enabled = true
+tint_color = Color(0.08, 0.23, 0.22, 0.65)
+attached_nodes = PackedInt32Array(15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26)
+
+[sub_resource type="VisualShaderNodeFrame" id="VisualShaderNodeFrame_dxmp8"]
+title = "03 Fast second current"
+tint_color_enabled = true
+tint_color = Color(0.08, 0.23, 0.22, 0.65)
+attached_nodes = PackedInt32Array(27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42)
+
+[sub_resource type="VisualShaderNodeFrame" id="VisualShaderNodeFrame_pmbkw"]
+title = "04 Living silhouette"
+tint_color_enabled = true
+tint_color = Color(0.08, 0.23, 0.22, 0.65)
+attached_nodes = PackedInt32Array(43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58)
+
+[sub_resource type="VisualShaderNodeFrame" id="VisualShaderNodeFrame_m14h8"]
+title = "05 Moving tears"
+tint_color_enabled = true
+tint_color = Color(0.08, 0.23, 0.22, 0.65)
+attached_nodes = PackedInt32Array(59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69)
+
+[sub_resource type="VisualShaderNodeFloatParameter" id="VisualShaderNodeFloatParameter_tpf1f"]
+resource_name = "shape_motion"
+linked_parent_graph_frame = 115
+parameter_name = "shape_motion"
+default_value_enabled = true
+default_value = 0.06
+
+[sub_resource type="VisualShaderNodeFrame" id="VisualShaderNodeFrame_tab8s"]
+title = "06 Whip window and fade"
+tint_color_enabled = true
+tint_color = Color(0.08, 0.23, 0.22, 0.65)
+attached_nodes = PackedInt32Array(70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85)
+
+[sub_resource type="VisualShaderNodeFrame" id="VisualShaderNodeFrame_1j3fi"]
+title = "07 Palette"
+tint_color_enabled = true
+tint_color = Color(0.08, 0.23, 0.22, 0.65)
+attached_nodes = PackedInt32Array(86, 87, 88, 89, 90, 91, 92, 93, 94, 95)
+
+[sub_resource type="VisualShaderNodeFrame" id="VisualShaderNodeFrame_gq8op"]
+title = "08 Flowing light"
+tint_color_enabled = true
+tint_color = Color(0.08, 0.23, 0.22, 0.65)
+attached_nodes = PackedInt32Array(96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114)
+
+[sub_resource type="VisualShaderNodeFloatParameter" id="VisualShaderNodeFloatParameter_tf1ho"]
+resource_name = "reveal_speed"
+linked_parent_graph_frame = 115
+parameter_name = "reveal_speed"
+default_value_enabled = true
+default_value = 3.0
+
+[sub_resource type="VisualShaderNodeFloatParameter" id="VisualShaderNodeFloatParameter_4dpb5"]
+resource_name = "stretch"
+linked_parent_graph_frame = 115
+parameter_name = "stretch"
+default_value_enabled = true
+default_value = 0.12
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_jt4t1"]
+resource_name = "Arc lengths travelled"
+linked_parent_graph_frame = 116
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_1blat"]
+resource_name = "Lean streaks with the swing"
+default_input_values = [0, 0.0, 1, 0.15]
+linked_parent_graph_frame = 116
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_bqmum"]
+resource_name = "Advect toward sword"
+linked_parent_graph_frame = 116
+operator = 1
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_linlj"]
+resource_name = "Primary lean"
+linked_parent_graph_frame = 116
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_ct476"]
+resource_name = "Per-swing offset"
+linked_parent_graph_frame = 116
+
+[sub_resource type="VisualShaderNodeInput" id="VisualShaderNodeInput_3vrje"]
+resource_name = "Arc UV"
+linked_parent_graph_frame = 115
+input_name = "uv"
+
+[sub_resource type="VisualShaderNodeFloatFunc" id="VisualShaderNodeFloatFunc_cp105"]
+resource_name = "Tile primary U"
+linked_parent_graph_frame = 116
+function = 17
+
+[sub_resource type="VisualShaderNodeVectorCompose" id="VisualShaderNodeVectorCompose_gyjsb"]
+resource_name = "Primary moving UV"
+linked_parent_graph_frame = 116
+op_type = 0
+
+[sub_resource type="VisualShaderNodeTexture" id="VisualShaderNodeTexture_8y7yn"]
+resource_name = "Energy field (primary)"
+linked_parent_graph_frame = 116
+texture = ExtResource("1_rl08r")
+
+[sub_resource type="VisualShaderNodeVectorDecompose" id="VisualShaderNodeVectorDecompose_omrt3"]
+resource_name = "Energy field (primary) RGBA"
+default_input_values = [0, Quaternion(0, 0, 0, 0)]
+linked_parent_graph_frame = 116
+op_type = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_cevh0"]
+resource_name = "Moving speed streaks"
+linked_parent_graph_frame = 116
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_lg521"]
+resource_name = "Moving tear teeth"
+linked_parent_graph_frame = 116
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_heco5"]
+resource_name = "Moving bright sheets"
+linked_parent_graph_frame = 116
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_rbeur"]
+resource_name = "Second current velocity"
+default_input_values = [0, 0.0, 1, 1.9]
+linked_parent_graph_frame = 117
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_cqlie"]
+resource_name = "Fine current scale"
+default_input_values = [0, 0.0, 1, 1.7]
+linked_parent_graph_frame = 117
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_asoxp"]
+resource_name = "Opposing lean"
+default_input_values = [0, 0.0, 1, -0.2]
+linked_parent_graph_frame = 117
+operator = 2
+
+[sub_resource type="VisualShaderNodeVectorDecompose" id="VisualShaderNodeVectorDecompose_8a54r"]
+resource_name = "Along / radial"
+linked_parent_graph_frame = 115
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_03wrj"]
+resource_name = "Second phase"
+default_input_values = [0, 0.0, 1, 0.37]
+linked_parent_graph_frame = 117
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_ve4bv"]
+resource_name = "Advect fast current"
+linked_parent_graph_frame = 117
+operator = 1
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_vwk0w"]
+resource_name = "Fast lean"
+linked_parent_graph_frame = 117
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_uk0bd"]
+resource_name = "Fast phase"
+linked_parent_graph_frame = 117
+
+[sub_resource type="VisualShaderNodeFloatFunc" id="VisualShaderNodeFloatFunc_xi6tf"]
+resource_name = "Tile fast U"
+linked_parent_graph_frame = 117
+function = 17
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_uw1ke"]
+resource_name = "Fine radial scale"
+default_input_values = [0, 0.0, 1, 0.8]
+linked_parent_graph_frame = 117
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_jxg4y"]
+resource_name = "Fine radial offset"
+default_input_values = [0, 0.0, 1, 0.23]
+linked_parent_graph_frame = 117
+
+[sub_resource type="VisualShaderNodeFloatFunc" id="VisualShaderNodeFloatFunc_sm8gy"]
+resource_name = "Tile fast V"
+linked_parent_graph_frame = 117
+function = 17
+
+[sub_resource type="VisualShaderNodeVectorCompose" id="VisualShaderNodeVectorCompose_fwhwe"]
+resource_name = "Fast moving UV"
+linked_parent_graph_frame = 117
+op_type = 0
+
+[sub_resource type="VisualShaderNodeTexture" id="VisualShaderNodeTexture_vyqcx"]
+resource_name = "Energy field (fast)"
+linked_parent_graph_frame = 117
+texture = ExtResource("1_rl08r")
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_vsosw"]
+resource_name = "U: tail to sword"
+linked_parent_graph_frame = 115
+
+[sub_resource type="VisualShaderNodeVectorDecompose" id="VisualShaderNodeVectorDecompose_clupk"]
+resource_name = "Energy field (fast) RGBA"
+default_input_values = [0, Quaternion(0, 0, 0, 0)]
+linked_parent_graph_frame = 117
+op_type = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_v83px"]
+resource_name = "Fast fine streaks"
+linked_parent_graph_frame = 117
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_eug6p"]
+resource_name = "Fast inner nicks"
+linked_parent_graph_frame = 117
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_7efpt"]
+resource_name = "Sheet pushes contour"
+default_input_values = [0, 0.0, 1, -0.4]
+linked_parent_graph_frame = 118
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_53y7b"]
+resource_name = "Preset shape motion"
+linked_parent_graph_frame = 118
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_pprmn"]
+resource_name = "Fast streak ripples contour"
+default_input_values = [0, 0.0, 1, -0.3]
+linked_parent_graph_frame = 118
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_2a4b1"]
+resource_name = "Ripple amount"
+linked_parent_graph_frame = 118
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_8noow"]
+resource_name = "Half ripple"
+default_input_values = [0, 0.0, 1, 0.5]
+linked_parent_graph_frame = 118
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_6veom"]
+resource_name = "Flung outward over life"
+linked_parent_graph_frame = 118
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_0athg"]
+resource_name = "Bend radial coordinate"
+linked_parent_graph_frame = 118
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_o1yvv"]
+resource_name = "V: inside to outside"
+linked_parent_graph_frame = 115
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_3mdjs"]
+resource_name = "Ripple radial coordinate"
+linked_parent_graph_frame = 118
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_51lfr"]
+resource_name = "Expand band outward"
+linked_parent_graph_frame = 118
+operator = 1
+
+[sub_resource type="VisualShaderNodeClamp" id="VisualShaderNodeClamp_csqoe"]
+resource_name = "No wrap across the radius"
+default_input_values = [0, 0.0, 1, 0.002, 2, 0.998]
+linked_parent_graph_frame = 118
+
+[sub_resource type="VisualShaderNodeVectorCompose" id="VisualShaderNodeVectorCompose_5odg3"]
+resource_name = "Deforming silhouette UV"
+linked_parent_graph_frame = 118
+op_type = 0
+
+[sub_resource type="VisualShaderNodeTexture" id="VisualShaderNodeTexture_1hswy"]
+resource_name = "Cut-paper silhouette"
+linked_parent_graph_frame = 118
+texture = ExtResource("2_c8fqw")
+
+[sub_resource type="VisualShaderNodeVectorDecompose" id="VisualShaderNodeVectorDecompose_otf6e"]
+resource_name = "Cut-paper silhouette RGBA"
+default_input_values = [0, Quaternion(0, 0, 0, 0)]
+linked_parent_graph_frame = 118
+op_type = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_pwvui"]
+resource_name = "Silhouette"
+linked_parent_graph_frame = 118
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_amxhm"]
+resource_name = "Bright inner face"
+linked_parent_graph_frame = 118
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_y3j5e"]
+resource_name = "Static highlight needles"
+linked_parent_graph_frame = 118
+
+[sub_resource type="VisualShaderNodeSmoothStep" id="VisualShaderNodeSmoothStep_ord3s"]
+resource_name = "Outer half of the band"
+default_input_values = [0, 0.45, 1, 0.95, 2, 0.5]
+linked_parent_graph_frame = 119
+
+[sub_resource type="VisualShaderNodeFloatParameter" id="VisualShaderNodeFloatParameter_a8ygn"]
+resource_name = "life"
+linked_parent_graph_frame = 115
+parameter_name = "life"
+default_value_enabled = true
+default_value = 0.22
+
+[sub_resource type="VisualShaderNodeSmoothStep" id="VisualShaderNodeSmoothStep_wane8"]
+resource_name = "Sharp moving teeth"
+default_input_values = [0, 0.35, 1, 0.65, 2, 0.5]
+linked_parent_graph_frame = 119
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_ne6lp"]
+resource_name = "Teeth bite the outer edge"
+linked_parent_graph_frame = 119
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatFunc" id="VisualShaderNodeFloatFunc_m7ikr"]
+resource_name = "Inner half"
+linked_parent_graph_frame = 119
+function = 31
+
+[sub_resource type="VisualShaderNodeSmoothStep" id="VisualShaderNodeSmoothStep_p4yf2"]
+resource_name = "Fast inner nicks"
+default_input_values = [0, 0.45, 1, 0.75, 2, 0.5]
+linked_parent_graph_frame = 119
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_n0mvm"]
+resource_name = "Nicks on the inside"
+linked_parent_graph_frame = 119
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_6g1kn"]
+resource_name = "Shallow nicks"
+default_input_values = [0, 0.0, 1, 0.6]
+linked_parent_graph_frame = 119
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_3pv68"]
+resource_name = "All moving cuts"
+linked_parent_graph_frame = 119
+operator = 6
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_sarw5"]
+resource_name = "Preset tear strength"
+linked_parent_graph_frame = 119
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatFunc" id="VisualShaderNodeFloatFunc_7pmjq"]
+resource_name = "Keep what is not torn"
+linked_parent_graph_frame = 119
+function = 31
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_1rbg4"]
+resource_name = "Torn silhouette"
+linked_parent_graph_frame = 119
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatParameter" id="VisualShaderNodeFloatParameter_qp666"]
+resource_name = "flow_age"
+linked_parent_graph_frame = 115
+parameter_name = "flow_age"
+default_value_enabled = true
+default_value = 0.04
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_qn5xn"]
+resource_name = "Sword position along the arc"
+linked_parent_graph_frame = 120
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_taqip"]
+resource_name = "Behind the sword?"
+linked_parent_graph_frame = 120
+operator = 1
+
+[sub_resource type="VisualShaderNodeSmoothStep" id="VisualShaderNodeSmoothStep_cl12i"]
+resource_name = "Drawn-in leading edge"
+default_input_values = [0, 0.0, 1, 0.1, 2, 0.5]
+linked_parent_graph_frame = 120
+
+[sub_resource type="VisualShaderNodeSmoothStep" id="VisualShaderNodeSmoothStep_4abfb"]
+resource_name = "Tail release"
+default_input_values = [0, 0.26, 1, 1.0, 2, 0.5]
+linked_parent_graph_frame = 120
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_iqscw"]
+resource_name = "Erosion travel"
+default_input_values = [0, 0.0, 1, 1.12]
+linked_parent_graph_frame = 120
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_kqjgp"]
+resource_name = "Erosion start"
+default_input_values = [0, 0.0, 1, -0.08]
+linked_parent_graph_frame = 120
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_dfjgy"]
+resource_name = "Slanted erosion"
+default_input_values = [0, 0.0, 1, 0.12]
+linked_parent_graph_frame = 120
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_faabr"]
+resource_name = "Erosion coordinate"
+linked_parent_graph_frame = 120
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_4l57w"]
+resource_name = "Ahead of the erosion?"
+linked_parent_graph_frame = 120
+operator = 1
+
+[sub_resource type="VisualShaderNodeSmoothStep" id="VisualShaderNodeSmoothStep_l1ayv"]
+resource_name = "Tail eroded"
+default_input_values = [0, 0.0, 1, 0.16, 2, 0.5]
+linked_parent_graph_frame = 120
+
+[sub_resource type="VisualShaderNodeFloatParameter" id="VisualShaderNodeFloatParameter_p17d1"]
+resource_name = "flow_speed"
+linked_parent_graph_frame = 115
+parameter_name = "flow_speed"
+default_value_enabled = true
+default_value = 5.0
+
+[sub_resource type="VisualShaderNodeSmoothStep" id="VisualShaderNodeSmoothStep_3sdo7"]
+resource_name = "Final fade"
+default_input_values = [0, 0.84, 1, 1.0, 2, 0.5]
+linked_parent_graph_frame = 120
+
+[sub_resource type="VisualShaderNodeFloatFunc" id="VisualShaderNodeFloatFunc_8lgua"]
+resource_name = "End transparency"
+linked_parent_graph_frame = 120
+function = 31
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_ief21"]
+resource_name = "Reveal"
+linked_parent_graph_frame = 120
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_jjorp"]
+resource_name = "Erode"
+linked_parent_graph_frame = 120
+operator = 2
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_rxscy"]
+resource_name = "Fade"
+linked_parent_graph_frame = 120
+operator = 2
+
+[sub_resource type="VisualShaderNodeSmoothStep" id="VisualShaderNodeSmoothStep_lq1qi"]
+resource_name = "Crisp cel edge"
+default_input_values = [0, 0.3, 1, 0.62, 2, 0.5]
+linked_parent_graph_frame = 120
+
+[sub_resource type="VisualShaderNodeColorParameter" id="VisualShaderNodeColorParameter_83ldn"]
+resource_name = "tail_color"
+linked_parent_graph_frame = 121
+parameter_name = "tail_color"
+default_value_enabled = true
+default_value = Color(0.05882353, 0.41568628, 0.44705883, 1)
+
+[sub_resource type="VisualShaderNodeColorParameter" id="VisualShaderNodeColorParameter_ru8ga"]
+resource_name = "body_color"
+linked_parent_graph_frame = 121
+parameter_name = "body_color"
+default_value_enabled = true
+default_value = Color(0.078431375, 0.7490196, 0.62352943, 1)
+
+[sub_resource type="VisualShaderNodeColorParameter" id="VisualShaderNodeColorParameter_wec1a"]
+resource_name = "face_color"
+linked_parent_graph_frame = 121
+parameter_name = "face_color"
+default_value_enabled = true
+default_value = Color(0.27450982, 0.9098039, 0.78431374, 1)
+
+[sub_resource type="VisualShaderNodeColorParameter" id="VisualShaderNodeColorParameter_c53b4"]
+resource_name = "streak_color"
+linked_parent_graph_frame = 121
+parameter_name = "streak_color"
+default_value_enabled = true
+default_value = Color(0.7254902, 1, 0.9411765, 1)
+
+[sub_resource type="VisualShaderNodeFloatParameter" id="VisualShaderNodeFloatParameter_1luih"]
+resource_name = "flow_phase"
+linked_parent_graph_frame = 115
+parameter_name = "flow_phase"
+default_value_enabled = true
+
+[sub_resource type="VisualShaderNodeColorParameter" id="VisualShaderNodeColorParameter_le56q"]
+resource_name = "core_color"
+linked_parent_graph_frame = 121
+parameter_name = "core_color"
+default_value_enabled = true
+default_value = Color(0.95686275, 1, 0.99215686, 1)
+
+[sub_resource type="VisualShaderNodeColorParameter" id="VisualShaderNodeColorParameter_d5oe4"]
+resource_name = "dark_color"
+linked_parent_graph_frame = 121
+parameter_name = "dark_color"
+default_value_enabled = true
+default_value = Color(0.043137256, 0.54901963, 0.53333336, 1)
+
+[sub_resource type="VisualShaderNodeSmoothStep" id="VisualShaderNodeSmoothStep_wbrsm"]
+resource_name = "Teal tail to mint body"
+default_input_values = [0, 0.1, 1, 0.72, 2, 0.5]
+linked_parent_graph_frame = 121
+
+[sub_resource type="VisualShaderNodeMix" id="VisualShaderNodeMix_c86nk"]
+resource_name = "Base energy"
+default_input_values = [0, Vector3(0, 0, 0), 1, Vector3(1, 1, 1), 2, 0.5]
+linked_parent_graph_frame = 121
+op_type = 4
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_xwvtm"]
+resource_name = "Inner face strength"
+default_input_values = [0, 0.0, 1, 0.8]
+linked_parent_graph_frame = 121
+operator = 2
+
+[sub_resource type="VisualShaderNodeMix" id="VisualShaderNodeMix_7k7cd"]
+resource_name = "Pale inner face"
+default_input_values = [0, Vector3(0, 0, 0), 1, Vector3(1, 1, 1), 2, 0.5]
+linked_parent_graph_frame = 121
+op_type = 4
+
+[sub_resource type="VisualShaderNodeSmoothStep" id="VisualShaderNodeSmoothStep_d5de4"]
+resource_name = "Between sheets"
+default_input_values = [0, 0.15, 1, 0.6, 2, 0.5]
+linked_parent_graph_frame = 122
+
+[sub_resource type="VisualShaderNodeFloatFunc" id="VisualShaderNodeFloatFunc_q0eq0"]
+resource_name = "Dark gaps"
+linked_parent_graph_frame = 122
+function = 31
+
+[sub_resource type="VisualShaderNodeFloatFunc" id="VisualShaderNodeFloatFunc_3e86v"]
+resource_name = "Not on the face"
+linked_parent_graph_frame = 122
+function = 31
+
+[sub_resource type="VisualShaderNodeFloatOp" id="VisualShaderNodeFloatOp_p5goc"]
+resource_name = "Gaps outside the face"
+linked_parent_graph_frame = 122
+operator = 2
+
+[resource]
+resource_name = "Sword energy - whip window / two advected currents / living silhouette / moving tears"
+modes/depth_draw = 2
+modes/cull = 2
+flags/depth_test_disabled = true
+flags/unshaded = true
+flags/fog_disabled = true
+nodes/fragment/0/position = Vector2(4400, 2600)
+nodes/fragment/2/node = SubResource("VisualShaderNodeInput_3vrje")
+nodes/fragment/2/position = Vector2(0, 0)
+nodes/fragment/3/node = SubResource("VisualShaderNodeVectorDecompose_8a54r")
+nodes/fragment/3/position = Vector2(260, 0)
+nodes/fragment/4/node = SubResource("VisualShaderNodeFloatOp_vsosw")
+nodes/fragment/4/position = Vector2(520, 0)
+nodes/fragment/5/node = SubResource("VisualShaderNodeFloatOp_o1yvv")
+nodes/fragment/5/position = Vector2(780, 0)
+nodes/fragment/6/node = SubResource("VisualShaderNodeFloatParameter_a8ygn")
+nodes/fragment/6/position = Vector2(1040, 0)
+nodes/fragment/7/node = SubResource("VisualShaderNodeFloatParameter_qp666")
+nodes/fragment/7/position = Vector2(1300, 0)
+nodes/fragment/8/node = SubResource("VisualShaderNodeFloatParameter_p17d1")
+nodes/fragment/8/position = Vector2(1560, 0)
+nodes/fragment/9/node = SubResource("VisualShaderNodeFloatParameter_1luih")
+nodes/fragment/9/position = Vector2(1820, 0)
+nodes/fragment/10/node = SubResource("VisualShaderNodeFloatParameter_cythm")
+nodes/fragment/10/position = Vector2(2080, 0)
+nodes/fragment/11/node = SubResource("VisualShaderNodeFloatParameter_emwhl")
+nodes/fragment/11/position = Vector2(2340, 0)
+nodes/fragment/12/node = SubResource("VisualShaderNodeFloatParameter_tpf1f")
+nodes/fragment/12/position = Vector2(2600, 0)
+nodes/fragment/13/node = SubResource("VisualShaderNodeFloatParameter_tf1ho")
+nodes/fragment/13/position = Vector2(2860, 0)
+nodes/fragment/14/node = SubResource("VisualShaderNodeFloatParameter_4dpb5")
+nodes/fragment/14/position = Vector2(3120, 0)
+nodes/fragment/15/node = SubResource("VisualShaderNodeFloatOp_jt4t1")
+nodes/fragment/15/position = Vector2(0, 560)
+nodes/fragment/16/node = SubResource("VisualShaderNodeFloatOp_1blat")
+nodes/fragment/16/position = Vector2(260, 560)
+nodes/fragment/17/node = SubResource("VisualShaderNodeFloatOp_bqmum")
+nodes/fragment/17/position = Vector2(520, 560)
+nodes/fragment/18/node = SubResource("VisualShaderNodeFloatOp_linlj")
+nodes/fragment/18/position = Vector2(780, 560)
+nodes/fragment/19/node = SubResource("VisualShaderNodeFloatOp_ct476")
+nodes/fragment/19/position = Vector2(1040, 560)
+nodes/fragment/20/node = SubResource("VisualShaderNodeFloatFunc_cp105")
+nodes/fragment/20/position = Vector2(1300, 560)
+nodes/fragment/21/node = SubResource("VisualShaderNodeVectorCompose_gyjsb")
+nodes/fragment/21/position = Vector2(1560, 560)
+nodes/fragment/22/node = SubResource("VisualShaderNodeTexture_8y7yn")
+nodes/fragment/22/position = Vector2(1820, 560)
+nodes/fragment/23/node = SubResource("VisualShaderNodeVectorDecompose_omrt3")
+nodes/fragment/23/position = Vector2(2080, 560)
+nodes/fragment/24/node = SubResource("VisualShaderNodeFloatOp_cevh0")
+nodes/fragment/24/position = Vector2(2340, 560)
+nodes/fragment/25/node = SubResource("VisualShaderNodeFloatOp_lg521")
+nodes/fragment/25/position = Vector2(2600, 560)
+nodes/fragment/26/node = SubResource("VisualShaderNodeFloatOp_heco5")
+nodes/fragment/26/position = Vector2(2860, 560)
+nodes/fragment/27/node = SubResource("VisualShaderNodeFloatOp_rbeur")
+nodes/fragment/27/position = Vector2(0, 1120)
+nodes/fragment/28/node = SubResource("VisualShaderNodeFloatOp_cqlie")
+nodes/fragment/28/position = Vector2(260, 1120)
+nodes/fragment/29/node = SubResource("VisualShaderNodeFloatOp_asoxp")
+nodes/fragment/29/position = Vector2(520, 1120)
+nodes/fragment/30/node = SubResource("VisualShaderNodeFloatOp_03wrj")
+nodes/fragment/30/position = Vector2(780, 1120)
+nodes/fragment/31/node = SubResource("VisualShaderNodeFloatOp_ve4bv")
+nodes/fragment/31/position = Vector2(1040, 1120)
+nodes/fragment/32/node = SubResource("VisualShaderNodeFloatOp_vwk0w")
+nodes/fragment/32/position = Vector2(1300, 1120)
+nodes/fragment/33/node = SubResource("VisualShaderNodeFloatOp_uk0bd")
+nodes/fragment/33/position = Vector2(1560, 1120)
+nodes/fragment/34/node = SubResource("VisualShaderNodeFloatFunc_xi6tf")
+nodes/fragment/34/position = Vector2(1820, 1120)
+nodes/fragment/35/node = SubResource("VisualShaderNodeFloatOp_uw1ke")
+nodes/fragment/35/position = Vector2(2080, 1120)
+nodes/fragment/36/node = SubResource("VisualShaderNodeFloatOp_jxg4y")
+nodes/fragment/36/position = Vector2(2340, 1120)
+nodes/fragment/37/node = SubResource("VisualShaderNodeFloatFunc_sm8gy")
+nodes/fragment/37/position = Vector2(2600, 1120)
+nodes/fragment/38/node = SubResource("VisualShaderNodeVectorCompose_fwhwe")
+nodes/fragment/38/position = Vector2(2860, 1120)
+nodes/fragment/39/node = SubResource("VisualShaderNodeTexture_vyqcx")
+nodes/fragment/39/position = Vector2(3120, 1120)
+nodes/fragment/40/node = SubResource("VisualShaderNodeVectorDecompose_clupk")
+nodes/fragment/40/position = Vector2(3380, 1120)
+nodes/fragment/41/node = SubResource("VisualShaderNodeFloatOp_v83px")
+nodes/fragment/41/position = Vector2(3640, 1120)
+nodes/fragment/42/node = SubResource("VisualShaderNodeFloatOp_eug6p")
+nodes/fragment/42/position = Vector2(3900, 1120)
+nodes/fragment/43/node = SubResource("VisualShaderNodeFloatOp_7efpt")
+nodes/fragment/43/position = Vector2(0, 1680)
+nodes/fragment/44/node = SubResource("VisualShaderNodeFloatOp_53y7b")
+nodes/fragment/44/position = Vector2(260, 1680)
+nodes/fragment/45/node = SubResource("VisualShaderNodeFloatOp_pprmn")
+nodes/fragment/45/position = Vector2(520, 1680)
+nodes/fragment/46/node = SubResource("VisualShaderNodeFloatOp_2a4b1")
+nodes/fragment/46/position = Vector2(780, 1680)
+nodes/fragment/47/node = SubResource("VisualShaderNodeFloatOp_8noow")
+nodes/fragment/47/position = Vector2(1040, 1680)
+nodes/fragment/48/node = SubResource("VisualShaderNodeFloatOp_6veom")
+nodes/fragment/48/position = Vector2(1300, 1680)
+nodes/fragment/49/node = SubResource("VisualShaderNodeFloatOp_0athg")
+nodes/fragment/49/position = Vector2(1560, 1680)
+nodes/fragment/50/node = SubResource("VisualShaderNodeFloatOp_3mdjs")
+nodes/fragment/50/position = Vector2(1820, 1680)
+nodes/fragment/51/node = SubResource("VisualShaderNodeFloatOp_51lfr")
+nodes/fragment/51/position = Vector2(2080, 1680)
+nodes/fragment/52/node = SubResource("VisualShaderNodeClamp_csqoe")
+nodes/fragment/52/position = Vector2(2340, 1680)
+nodes/fragment/53/node = SubResource("VisualShaderNodeVectorCompose_5odg3")
+nodes/fragment/53/position = Vector2(2600, 1680)
+nodes/fragment/54/node = SubResource("VisualShaderNodeTexture_1hswy")
+nodes/fragment/54/position = Vector2(2860, 1680)
+nodes/fragment/55/node = SubResource("VisualShaderNodeVectorDecompose_otf6e")
+nodes/fragment/55/position = Vector2(3120, 1680)
+nodes/fragment/56/node = SubResource("VisualShaderNodeFloatOp_pwvui")
+nodes/fragment/56/position = Vector2(3380, 1680)
+nodes/fragment/57/node = SubResource("VisualShaderNodeFloatOp_amxhm")
+nodes/fragment/57/position = Vector2(3640, 1680)
+nodes/fragment/58/node = SubResource("VisualShaderNodeFloatOp_y3j5e")
+nodes/fragment/58/position = Vector2(3900, 1680)
+nodes/fragment/59/node = SubResource("VisualShaderNodeSmoothStep_ord3s")
+nodes/fragment/59/position = Vector2(0, 2240)
+nodes/fragment/60/node = SubResource("VisualShaderNodeSmoothStep_wane8")
+nodes/fragment/60/position = Vector2(260, 2240)
+nodes/fragment/61/node = SubResource("VisualShaderNodeFloatOp_ne6lp")
+nodes/fragment/61/position = Vector2(520, 2240)
+nodes/fragment/62/node = SubResource("VisualShaderNodeFloatFunc_m7ikr")
+nodes/fragment/62/position = Vector2(780, 2240)
+nodes/fragment/63/node = SubResource("VisualShaderNodeSmoothStep_p4yf2")
+nodes/fragment/63/position = Vector2(1040, 2240)
+nodes/fragment/64/node = SubResource("VisualShaderNodeFloatOp_n0mvm")
+nodes/fragment/64/position = Vector2(1300, 2240)
+nodes/fragment/65/node = SubResource("VisualShaderNodeFloatOp_6g1kn")
+nodes/fragment/65/position = Vector2(1560, 2240)
+nodes/fragment/66/node = SubResource("VisualShaderNodeFloatOp_3pv68")
+nodes/fragment/66/position = Vector2(1820, 2240)
+nodes/fragment/67/node = SubResource("VisualShaderNodeFloatOp_sarw5")
+nodes/fragment/67/position = Vector2(2080, 2240)
+nodes/fragment/68/node = SubResource("VisualShaderNodeFloatFunc_7pmjq")
+nodes/fragment/68/position = Vector2(2340, 2240)
+nodes/fragment/69/node = SubResource("VisualShaderNodeFloatOp_1rbg4")
+nodes/fragment/69/position = Vector2(2600, 2240)
+nodes/fragment/70/node = SubResource("VisualShaderNodeFloatOp_qn5xn")
+nodes/fragment/70/position = Vector2(0, 2800)
+nodes/fragment/71/node = SubResource("VisualShaderNodeFloatOp_taqip")
+nodes/fragment/71/position = Vector2(260, 2800)
+nodes/fragment/72/node = SubResource("VisualShaderNodeSmoothStep_cl12i")
+nodes/fragment/72/position = Vector2(520, 2800)
+nodes/fragment/73/node = SubResource("VisualShaderNodeSmoothStep_4abfb")
+nodes/fragment/73/position = Vector2(780, 2800)
+nodes/fragment/74/node = SubResource("VisualShaderNodeFloatOp_iqscw")
+nodes/fragment/74/position = Vector2(1040, 2800)
+nodes/fragment/75/node = SubResource("VisualShaderNodeFloatOp_kqjgp")
+nodes/fragment/75/position = Vector2(1300, 2800)
+nodes/fragment/76/node = SubResource("VisualShaderNodeFloatOp_dfjgy")
+nodes/fragment/76/position = Vector2(1560, 2800)
+nodes/fragment/77/node = SubResource("VisualShaderNodeFloatOp_faabr")
+nodes/fragment/77/position = Vector2(1820, 2800)
+nodes/fragment/78/node = SubResource("VisualShaderNodeFloatOp_4l57w")
+nodes/fragment/78/position = Vector2(2080, 2800)
+nodes/fragment/79/node = SubResource("VisualShaderNodeSmoothStep_l1ayv")
+nodes/fragment/79/position = Vector2(2340, 2800)
+nodes/fragment/80/node = SubResource("VisualShaderNodeSmoothStep_3sdo7")
+nodes/fragment/80/position = Vector2(2600, 2800)
+nodes/fragment/81/node = SubResource("VisualShaderNodeFloatFunc_8lgua")
+nodes/fragment/81/position = Vector2(2860, 2800)
+nodes/fragment/82/node = SubResource("VisualShaderNodeFloatOp_ief21")
+nodes/fragment/82/position = Vector2(3120, 2800)
+nodes/fragment/83/node = SubResource("VisualShaderNodeFloatOp_jjorp")
+nodes/fragment/83/position = Vector2(3380, 2800)
+nodes/fragment/84/node = SubResource("VisualShaderNodeFloatOp_rxscy")
+nodes/fragment/84/position = Vector2(3640, 2800)
+nodes/fragment/85/node = SubResource("VisualShaderNodeSmoothStep_lq1qi")
+nodes/fragment/85/position = Vector2(3900, 2800)
+nodes/fragment/86/node = SubResource("VisualShaderNodeColorParameter_83ldn")
+nodes/fragment/86/position = Vector2(0, 3360)
+nodes/fragment/87/node = SubResource("VisualShaderNodeColorParameter_ru8ga")
+nodes/fragment/87/position = Vector2(260, 3360)
+nodes/fragment/88/node = SubResource("VisualShaderNodeColorParameter_wec1a")
+nodes/fragment/88/position = Vector2(520, 3360)
+nodes/fragment/89/node = SubResource("VisualShaderNodeColorParameter_c53b4")
+nodes/fragment/89/position = Vector2(780, 3360)
+nodes/fragment/90/node = SubResource("VisualShaderNodeColorParameter_le56q")
+nodes/fragment/90/position = Vector2(1040, 3360)
+nodes/fragment/91/node = SubResource("VisualShaderNodeColorParameter_d5oe4")
+nodes/fragment/91/position = Vector2(1300, 3360)
+nodes/fragment/92/node = SubResource("VisualShaderNodeSmoothStep_wbrsm")
+nodes/fragment/92/position = Vector2(1560, 3360)
+nodes/fragment/93/node = SubResource("VisualShaderNodeMix_c86nk")
+nodes/fragment/93/position = Vector2(1820, 3360)
+nodes/fragment/94/node = SubResource("VisualShaderNodeFloatOp_xwvtm")
+nodes/fragment/94/position = Vector2(2080, 3360)
+nodes/fragment/95/node = SubResource("VisualShaderNodeMix_7k7cd")
+nodes/fragment/95/position = Vector2(2340, 3360)
+nodes/fragment/96/node = SubResource("VisualShaderNodeSmoothStep_d5de4")
+nodes/fragment/96/position = Vector2(0, 3920)
+nodes/fragment/97/node = SubResource("VisualShaderNodeFloatFunc_q0eq0")
+nodes/fragment/97/position = Vector2(260, 3920)
+nodes/fragment/98/node = SubResource("VisualShaderNodeFloatFunc_3e86v")
+nodes/fragment/98/position = Vector2(520, 3920)
+nodes/fragment/99/node = SubResource("VisualShaderNodeFloatOp_p5goc")
+nodes/fragment/99/position = Vector2(780, 3920)
+nodes/fragment/100/node = SubResource("VisualShaderNodeFloatOp_6p48w")
+nodes/fragment/100/position = Vector2(1040, 3920)
+nodes/fragment/101/node = SubResource("VisualShaderNodeMix_squs7")
+nodes/fragment/101/position = Vector2(1300, 3920)
+nodes/fragment/102/node = SubResource("VisualShaderNodeFloatOp_v4k7w")
+nodes/fragment/102/position = Vector2(1560, 3920)
+nodes/fragment/103/node = SubResource("VisualShaderNodeFloatOp_obubn")
+nodes/fragment/103/position = Vector2(1820, 3920)
+nodes/fragment/104/node = SubResource("VisualShaderNodeFloatOp_r3km7")
+nodes/fragment/104/position = Vector2(2080, 3920)
+nodes/fragment/105/node = SubResource("VisualShaderNodeFloatFunc_88ny2")
+nodes/fragment/105/position = Vector2(2340, 3920)
+nodes/fragment/106/node = SubResource("VisualShaderNodeFloatOp_blafe")
+nodes/fragment/106/position = Vector2(2600, 3920)
+nodes/fragment/107/node = SubResource("VisualShaderNodeFloatOp_7jdr3")
+nodes/fragment/107/position = Vector2(2860, 3920)
+nodes/fragment/108/node = SubResource("VisualShaderNodeFloatOp_sdlkt")
+nodes/fragment/108/position = Vector2(3120, 3920)
+nodes/fragment/109/node = SubResource("VisualShaderNodeFloatOp_7p44h")
+nodes/fragment/109/position = Vector2(3380, 3920)
+nodes/fragment/110/node = SubResource("VisualShaderNodeMix_yofqu")
+nodes/fragment/110/position = Vector2(3640, 3920)
+nodes/fragment/111/node = SubResource("VisualShaderNodeMix_1a54p")
+nodes/fragment/111/position = Vector2(3900, 3920)
+nodes/fragment/112/node = SubResource("VisualShaderNodeSmoothStep_ee4ej")
+nodes/fragment/112/position = Vector2(4160, 3920)
+nodes/fragment/113/node = SubResource("VisualShaderNodeFloatOp_6ui3e")
+nodes/fragment/113/position = Vector2(4420, 3920)
+nodes/fragment/114/node = SubResource("VisualShaderNodeMix_m3tmt")
+nodes/fragment/114/position = Vector2(4680, 3920)
+nodes/fragment/115/node = SubResource("VisualShaderNodeFrame_vcuc6")
+nodes/fragment/115/position = Vector2(-40, -50)
+nodes/fragment/116/node = SubResource("VisualShaderNodeFrame_4awbr")
+nodes/fragment/116/position = Vector2(-40, 510)
+nodes/fragment/117/node = SubResource("VisualShaderNodeFrame_dxmp8")
+nodes/fragment/117/position = Vector2(-40, 1070)
+nodes/fragment/118/node = SubResource("VisualShaderNodeFrame_pmbkw")
+nodes/fragment/118/position = Vector2(-40, 1630)
+nodes/fragment/119/node = SubResource("VisualShaderNodeFrame_m14h8")
+nodes/fragment/119/position = Vector2(-40, 2190)
+nodes/fragment/120/node = SubResource("VisualShaderNodeFrame_tab8s")
+nodes/fragment/120/position = Vector2(-40, 2750)
+nodes/fragment/121/node = SubResource("VisualShaderNodeFrame_1j3fi")
+nodes/fragment/121/position = Vector2(-40, 3310)
+nodes/fragment/122/node = SubResource("VisualShaderNodeFrame_gq8op")
+nodes/fragment/122/position = Vector2(-40, 3870)
+nodes/fragment/connections = PackedInt32Array(2, 0, 3, 0, 3, 0, 4, 0, 3, 1, 5, 0, 7, 0, 15, 0, 8, 0, 15, 1, 5, 0, 16, 0, 4, 0, 17, 0, 15, 0, 17, 1, 17, 0, 18, 0, 16, 0, 18, 1, 18, 0, 19, 0, 9, 0, 19, 1, 19, 0, 20, 0, 20, 0, 21, 0, 5, 0, 21, 1, 21, 0, 22, 0, 22, 0, 23, 0, 23, 0, 24, 0, 23, 1, 25, 0, 23, 2, 26, 0, 15, 0, 27, 0, 4, 0, 28, 0, 5, 0, 29, 0, 9, 0, 30, 0, 28, 0, 31, 0, 27, 0, 31, 1, 31, 0, 32, 0, 29, 0, 32, 1, 32, 0, 33, 0, 30, 0, 33, 1, 33, 0, 34, 0, 5, 0, 35, 0, 35, 0, 36, 0, 36, 0, 37, 0, 34, 0, 38, 0, 37, 0, 38, 1, 38, 0, 39, 0, 39, 0, 40, 0, 40, 0, 41, 0, 40, 1, 42, 0, 26, 0, 43, 0, 43, 0, 44, 0, 12, 0, 44, 1, 41, 0, 45, 0, 45, 0, 46, 0, 12, 0, 46, 1, 46, 0, 47, 0, 6, 0, 48, 0, 14, 0, 48, 1, 5, 0, 49, 0, 44, 0, 49, 1, 49, 0, 50, 0, 47, 0, 50, 1, 50, 0, 51, 0, 48, 0, 51, 1, 51, 0, 52, 0, 4, 0, 53, 0, 52, 0, 53, 1, 53, 0, 54, 0, 54, 0, 55, 0, 55, 3, 56, 0, 55, 0, 57, 0, 55, 1, 58, 0, 5, 0, 59, 2, 25, 0, 60, 2, 60, 0, 61, 0, 59, 0, 61, 1, 59, 0, 62, 0, 42, 0, 63, 2, 63, 0, 64, 0, 62, 0, 64, 1, 64, 0, 65, 0, 61, 0, 66, 0, 65, 0, 66, 1, 66, 0, 67, 0, 11, 0, 67, 1, 67, 0, 68, 0, 56, 0, 69, 0, 68, 0, 69, 1, 6, 0, 70, 0, 13, 0, 70, 1, 70, 0, 71, 0, 4, 0, 71, 1, 71, 0, 72, 2, 6, 0, 73, 2, 73, 0, 74, 0, 74, 0, 75, 0, 5, 0, 76, 0, 76, 0, 77, 0, 4, 0, 77, 1, 77, 0, 78, 0, 75, 0, 78, 1, 78, 0, 79, 2, 6, 0, 80, 2, 80, 0, 81, 0, 69, 0, 82, 0, 72, 0, 82, 1, 82, 0, 83, 0, 79, 0, 83, 1, 83, 0, 84, 0, 81, 0, 84, 1, 84, 0, 85, 2, 85, 0, 0, 1, 4, 0, 92, 2, 86, 0, 93, 0, 87, 0, 93, 1, 92, 0, 93, 2, 57, 0, 94, 0, 93, 0, 95, 0, 88, 0, 95, 1, 94, 0, 95, 2, 26, 0, 96, 2, 96, 0, 97, 0, 57, 0, 98, 0, 97, 0, 99, 0, 98, 0, 99, 1, 99, 0, 100, 0, 95, 0, 101, 0, 91, 0, 101, 1, 100, 0, 101, 2, 41, 0, 102, 0, 24, 0, 103, 0, 102, 0, 103, 1, 103, 0, 104, 0, 10, 0, 104, 1, 104, 0, 105, 0, 105, 0, 106, 0, 92, 0, 107, 0, 107, 0, 108, 0, 106, 0, 109, 0, 108, 0, 109, 1, 101, 0, 110, 0, 89, 0, 110, 1, 109, 0, 110, 2, 110, 0, 111, 0, 90, 0, 111, 1, 58, 0, 111, 2, 4, 0, 112, 2, 112, 0, 113, 0, 111, 0, 114, 0, 90, 0, 114, 1, 113, 0, 114, 2, 114, 0, 0, 0)

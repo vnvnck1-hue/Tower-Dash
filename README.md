@@ -41,7 +41,9 @@ Godot_v4.7.2-stable_mono_win64_console.exe --path . -- --seq=screenshots/seq:45:
 
 ## 전투·목숨 (scripts/goblin.gd, scripts/hearts_hud.gd, main.gd `_update_combat`)
 - **진행 좌표**: `progress`(되감기 없는 누적 계단 수). 적·화살은 절대 계단 번호 `k_abs` 를 가지며 `_step_local()` 로 월드 로컬 위치(해당 턴의 디딤판 높이)에 놓인다. 스폰은 1.2바퀴 앞까지 9~16계단 간격, 끊긴 계단 ±3 제외.
-- **무리 스폰**: 7~12계단 간격으로 3~6마리가 2~4계단 구간에 겹쳐 스폰되고, 각자 좌우 오프셋(계단 폭의 ±36%)·달리기 속도(4.2~6.5계단/초)·돌진 거리(11~17계단)·팔 휘두르기 위상이 랜덤이라 줄 서지 않고 몰려 내려온다. 크기 `size_scale` 1.6 × 0.7~1.3 랜덤(±30% 변주, 화면상 플레이어와 비슷). **주의**: 배치 시 `_step_local()` 이 Transform3D 전체를 다시 쓰므로 `g.scale` 대신 `size_scale` 을 `scaled_local()` 로 매 프레임 구워 넣는다(이전에는 스케일이 매 프레임 1.0 으로 덮여 크기 변경이 전혀 반영되지 않던 버그).
+- **AI 디렉터 스폰(기본, scripts/director.gd)**: 레프트 4 데드의 디렉터를 러너 스케일로 줄인 것. 긴장감 수치 `intensity`(0~1)는 피격·낙하 +0.45, 처치 +0.07(멀티킬 ×1.6), 적이 4계단 안(돌진 중이면 8계단) 또는 화살이 3계단 안이면 초당 +0.16, 1.4초 아무 일 없으면 초당 −0.11 로 감쇠. 페이싱은 **BUILD_UP**(최소 6초, 긴장감 0.8 도달 시 종료, 26초가 지나도 못 오르면 강제 서지 1마디 [2,2,1,2] 후 종료) → **SUSTAIN_PEAK**(3~5초, 신규 스폰 없음) → **RELAX**(긴장감 0.3 미만이고 5초 경과, 또는 최대 12초; 두 마디에 한 번 첫 박에 고블린 1) → BUILD_UP 사이클.
+- **박자 스폰**: 스폰 슬롯은 등반 0.9초마다 1박(약 67 BPM; 평활화한 등반 속도 `_climb_rate` 계단/초 × 0.9, 최소 3계단), 4박 = 1마디. BUILD_UP 의 마디 패턴은 긴장감 구간별로 [2,1,1,1](<0.25) / [1,1,0,1](<0.5) / [1,0,1,0](<0.75) / [1,0,0,0](≥0.75) — **긴장감이 낮을수록 고블린이 많이** 나온다. 2 = 강세 박: 디딤판 좌우(±0.6~0.9)에 한 쌍이 0.4계단 차로 나란히. 마디 마지막 박은 60% 확률로 궁수. 구멍 ±3계단은 박을 건너뛰고, 생존 고블린 10마리 이상이면 슬롯을 비운다. 앞서 채우는 거리는 0.55바퀴(탑 뒤에 가려 팝인 없음). 디버그 패널 `Goblin spawns` 에서 옛 무리 스폰으로 되돌릴 수 있고, 우상단에 `state  초  I=긴장감  bar/beat` 가 표시된다.
+- **무리 스폰(레거시)**: 7~12계단 간격으로 3~6마리가 2~4계단 구간에 겹쳐 스폰되고, 각자 좌우 오프셋(계단 폭의 ±36%)·달리기 속도(4.2~6.5계단/초)·돌진 거리(11~17계단)·팔 휘두르기 위상이 랜덤이라 줄 서지 않고 몰려 내려온다. 크기 `size_scale` 1.6 × 0.7~1.3 랜덤(±30% 변주, 화면상 플레이어와 비슷). **주의**: 배치 시 `_step_local()` 이 Transform3D 전체를 다시 쓰므로 `g.scale` 대신 `size_scale` 을 `scaled_local()` 로 매 프레임 구워 넣는다(이전에는 스케일이 매 프레임 1.0 으로 덮여 크기 변경이 전혀 반영되지 않던 버그).
 - **돌진**: 플레이어가 돌진 거리 안에 들어오면 `charge` 상태로 계단을 뛰어 내려온다. 포즈는 양팔을 머리 위로 풍차처럼 휘두르고 다리를 크게 차는 우스꽝스러운 달리기(`_run_pose`), 대기 중엔 조급하게 깡충거림. 3.2계단 안에 오면 0.45초 예비 → 휘두르기, 빗나가면 다시 돌진.
 - **근접 고블린**: 돌진 후 예비(곤봉 뒤로) → 휘두르기. 휘두를 때 2.4계단 안·지상·무적 아님이면 피격. 부딪혀도 피격.
 - **궁수 고블린**: 7~16계단 거리에서 draw1(1.5초) → draw2(1.5초, 몸을 뒤로 젖히고 시위 손이 머리 뒤로 가는 과장 포즈 = 패링 텔) → 발사. 7계단 안으로 들어오면 활을 든 채 함께 돌진해 근접 공격. 화살은 초당 11계단으로 내려오며, 0.6계단 안에서 공격 활성 프레임이면 **패링**(불꽃 + 속도 버스트), 점프 높이 2.2 이상이나 대쉬면 회피, 아니면 피격.
@@ -142,3 +144,33 @@ Tab 은 패널 버튼이 포커스를 가지면 GUI 포커스 이동에 먹혀 �
 - 사용: 이미지 위에 드래그해 스케치, 키별·클립별 코멘트. 브라우저에 자동 저장되며 「피드백 내보내기」로 `pose_feedback.json` 을 받는다.
   그 파일을 프로젝트 폴더에 두면 코멘트와 스케치(PNG dataURL)를 읽어 포즈 수정에 반영할 수 있다. 반영한 피드백은 `feedback/` 에 보관.
 - 포즈 원칙 (2026-10-28 1차 피드백, `tools/patch_v13.py`): 검은 항상 **이동 방향의 반대**를 가리킨다 — 달리기·대시·점프 도약은 뒤로, 낙하 중(jump/drop/recover/jump2 끝)은 `FALL_ARMS` 로 위로. 2단 점프는 검을 팔과 일직선 스포크로 고정해 끝이 완전한 원을 그린다. 대시(LEAP)는 엉덩이까지 눕히고 한쪽 무릎을 접어 앞으로.
+
+## 민트색 검기 — Godot Visual Shader (2026-10-29)
+
+현재 검기는 `shaders/slash_visual.tres` 를 공유하는 3개 머티리얼 프리셋을 사용한다. 외곽은 VisualShader의 수학 노드로 만드는 **양끝이 예리한 곡선 타원형 칼날**이다. 타원형 덩어리의 중심·길이·폭과 갈라지는 틈이 원호를 따라 이동한다. 샘플링하는 이미지 텍스처와 Expression 노드는 없으며, 9개 프레임으로 생성/이동/볼륨/수명을 구분한다.
+
+- 프리셋 전환: **F4** 또는 디버그 패널의 **Sword energy** 행. `Blade Flow`(칼날 흐름형, `shaders/slash_blade_flow.tres`), `Layered Surge`(다층 에너지형, `shaders/slash_material.tres`, 기본값), `Ripped Torrent`(격렬한 찢김형, `shaders/slash_ripped_torrent.tres`). 선택은 기존 설정 파일에 저장된다. CLI `--slash=0|1|2` 로 지정할 수도 있다.
+- 외곽 이동: 각 곡선 타원은 `pow(max(1 - x*x, 0), 1.25)` 단면으로 곡률을 만들고, 앞쪽으로 두께가 모이도록 편향한다. 중심이 `flow_age * flow_speed` 로 이동해 앞끝·꼬리·윤곽이 함께 베는 방향으로 전진한다. 배경 타원, 바깥쪽 가는 타원과 음각의 곡선 타원 틈도 서로 다른 속도로 이동한다.
+- 프리셋 조절: 각 머티리얼에서 `flow_speed`(외곽 속도), `blade_length`(원호상 타원 반길이), `blade_width`(부피), `layer_strength`(뒤쪽/분리된 겹), `tear_strength`(곡선 타원형 틈), `volume_strength`(밝은 바깥 면과 안쪽 면 대비)를 편집한다.
+- 볼륨: `tail_color`, `body_color`, `edge_color`, `channel_color`, `filament_color` 로 안쪽의 어두운 면, 민트색 몸체, 바깥쪽의 밝은 면과 예리한 림을 만든다. 색면은 이동하는 타원의 단면을 따라가며, 별도 내부 무늬를 스크롤하지 않는다.
+- 시간: `life` 0→1은 길이/폭의 변화와 소멸, `flow_age` 는 공격 시작 후의 실제 초 단위 시간이다. life를 고정해도 **외곽 자체가** 이동하며, flow_speed=0 이면 외곽이 정지한다. 히트스톱에는 함께 멈춘다. 일반/공중 베기 0.19초, 내려찍기는 0.30초에 시작해 0.26초 동안 재생한다. 공격 중 겹치는 보조 리본은 숨긴다.
+- 메시/조준: `TRAILS` 의 각도는 -150→210°인 닫힌 360° 지지 원호다(160분할). 보이는 외형은 셰이더가 만들며 지지 메시의 양끝에 의해 네모나게 잘리지 않도록 연결되어 있다. `TRAILS` 의 반경/중심/방향/시간으로 공격별 배치를 조절한다. 일반 베기 반경/중심은 검 끝으로 이어지도록 맞췄으며 기존 마우스 조준·좌우 반전도 적용된다.
+- 이전의 `slash_cut_mask.png`, `slash_flow_field.png` 는 현재 셰이더에서 참조하지 않는다.
+- 그래프 재생성: `Godot --headless --path . --script tools/build_slash_visual_shader.gd`. 이 명령은 `slash_visual.tres` 를 다시 쓰므로 수동으로 편집한 그래프를 유지하려면 실행하지 않는다.
+- 실제 렌더 확인: `Godot --path . --windowed --fixed-fps 60 --script tools/preview_slash.gd -- --out=screenshots/slash_final`. 5종 공격의 시작/정점/소멸과 위·아래 조준/좌향 캡처를 만든다. 인게임 연속 공격은 기존 `--anim=attack --seq=폴더:프레임수:간격` 과 `--fixed-fps 60` 을 함께 사용한다.
+- 외곽 전용 확인: 위 명령에 `--flow-review --out=screenshots/outline_v3_review` 를 사용한 후 `python tools/review_outline_captures.py`. 3개 프리셋의 실제 60fps 수명, life 고정 외곽 이동, 모든 색을 흰색으로 대체한 실루엣, 속도 0인 대조군을 별도로 렌더링한다. 실루엣의 각도 이동과 정지 대조군을 검증하고 JSON과 비교 GIF를 만든다. `--flow-game-review --out=screenshots/outline_game_v3` 는 실제 F4 처리/패널 콜백/공격 시간 진행을 인게임 장면으로 확인한다.
+
+## 채찍 흐름 검기 — Whip 프리셋 (2026-10-29)
+
+F4 / 디버그 패널 **Sword energy** 의 4~6번째 프리셋 `Whip Clean`(`shaders/slash_whip_clean.tres`), `Whip Surge`(`shaders/slash_whip_surge.tres`), `Whip Torrent`(`shaders/slash_whip_torrent.tres`) 은 기존 3개와 다른 셰이더 `shaders/slash_whip_visual.tres` (네이티브 노드 122개, Expression 없음) 를 쓴다. `RunnerCharacter.WHIP_FIRST` 이상이면 `set_slash_preset` 이 머티리얼 자체를 교체하고, `_start_slash` 는 `WHIP_TRAILS` 의 초승달(약 230°, r_in 1.25, 수명 0.22s) 을 만든다. CLI `--slash=3|4|5`.
+
+- 재생성: `node tools/build_slash_whip_textures.js` (Python 불필요) → `bash tools/godot.sh --headless --import` → `bash tools/godot.sh --headless --script tools/build_slash_whip_shader.gd`.
+- 텍스처: `textures/slash_whip_energy.png` 는 U(꼬리→검) 로 타일되는 흐름 필드(R 속도 스트릭, G 뒤로 눕는 찢김 이빨, B 밝기 시트), `textures/slash_whip_shape.png` 는 실루엣(A 가는 채찍 꼬리 → 바깥 불꽃 이빨 → 검 앞 넓은 머리, R 안쪽 밝은 면, G 하이라이트 바늘).
+- 움직임은 공격 시계(`life`, `flow_age`) 로만 구동한다. `reveal_speed` 로 꼬리→검 순서로 호가 그려지고 life 0.26 부터 꼬리가 침식되어 띠 자체가 휘두르는 방향으로 이동한다. 에너지 필드는 `flow_speed` 와 1.9배 속도의 두 층으로 검 쪽으로 이류하고, 시트가 마스크 V 를 휘게 하며(`shape_motion`) `stretch` 만큼 바깥으로 밀려난다. 이빨 채널이 바깥 절반을 찢는다(`tear_strength`).
+- 색: `tail_color` 어두운 청록 → `body_color` 민트 → `face_color` 안쪽 밝은 면, 스트릭 `streak_color`, 바늘/검 끝 `core_color`, 시트 사이 `dark_color` (VisualShader 기본값).
+- 검증: `bash tools/godot.sh --quit-after 3000 --script tools/preview_slash_whip.gd -- --out=screenshots/slash_whip` 가 프리셋별 60fps 전체 수명 콘택트 시트(`sheet_p3..5.png`) 를 만들고, `--game` 을 붙이면 실제 플레이 중 F4 로 whip 프리셋까지 순환하며 공격 기준 flow_age 증가를 단언한다.
+
+## 구조적 텍스처링 방향 (트림시트 · 모듈 계단 · 메시 데칼, 2026-10-29)
+
+80.lv 기사(*Structural Approach to Texturing a Temple*)의 자산 분류/트림시트/모듈 복제/메시 데칼/베이크-후-색 순서를 타워대시에 적용하는 방향 정리와 예시 캡처: `docs/structural_texturing.md`, `screenshots/trim/`.
+예시 코드는 본 게임을 건드리지 않는다 — `scripts/trim_kit.gd`(쐐기 계단 모듈 + 데칼 스트립, MultiMesh), `shaders/toon_trim.gdshader`(트림 UV 툰 셰이더), `tools/build_trim_sheet.gd`(트림시트·플래그스톤 생성), `tools/preview_trim.gd`(전후·분류·키트 캡처), `tools/blender_bake_step.py`(Blender 하이폴→로우폴 베이크 데모).

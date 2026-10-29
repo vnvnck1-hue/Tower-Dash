@@ -1,0 +1,15 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://shaders/slash_visual.tres" id="1"]
+
+[resource]
+resource_name = "Layered Surge - travelling curved blade volumes"
+shader = ExtResource("1")
+shader_parameter/life = 0.22
+shader_parameter/flow_age = 0.04
+shader_parameter/flow_speed = 1.55
+shader_parameter/layer_strength = 0.72
+shader_parameter/blade_width = 1.0
+shader_parameter/blade_length = 0.39
+shader_parameter/tear_strength = 0.90
+shader_parameter/volume_strength = 0.90

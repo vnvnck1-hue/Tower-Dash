@@ -92,7 +92,16 @@ var _hearts: Control
 var _gap_grace := 0.0
 var _shake := 0.0
 var _rng := RandomNumberGenerator.new()
-var _spawn_next := 14.0          # absolute step of the next spawn
+var _spawn_next := 14.0          # absolute step of the next spawn (next beat slot with the director)
+## L4D-style pacing: intensity 0..1 from the runner's hits/kills/threats drives a
+## BUILD_UP -> PEAK -> RELAX cycle, and spawns land on a beat grid (see scripts/director.gd).
+const DirectorScript := preload("res://scripts/director.gd")
+const SPAWN_LOOKAHEAD := STEPS_PER_TURN * 0.55   # seed about half a turn ahead (hidden behind the tower)
+const MAX_ALIVE_GOBLINS := 10
+var _director: DirectorScript = DirectorScript.new(7)
+var director_on := true          # debug panel: Director vs. the old random packs
+var _climb_rate := 4.0           # smoothed climb speed in steps per second (beat -> steps)
+var _director_label: Label
 var _banner_label: Label
 var runner: Node3D
 ## Climb speed control (A = slower, D = faster), as a multiplier of the base turn time.
@@ -119,6 +128,22 @@ var _demo_sub_t := 0.0
 ## Background props that would sweep between the camera and the tower; hidden while near.
 var _near_cull: Array[Node3D] = []
 const NEAR_CULL_Z := 17.0
+## Tower chunks (one per absolute turn, see [method _sync_chunks]) and the hall backdrop.
+const CHUNKS_BELOW := 3
+const CHUNKS_ABOVE := 2
+var _chunks := {}                  # absolute turn index -> chunk root (child of world)
+var _chunk_thread: Thread
+var _chunk_building := 0
+var _tower_mat: ShaderMaterial
+var _bed_mat: ShaderMaterial
+var _stair_mat: ShaderMaterial
+var _cap_mat: ShaderMaterial
+var _backdrop: Node3D
+var _wall_mi: MeshInstance3D
+var _wall_mat: ShaderMaterial
+var _radial: Array[Node3D] = []    # backdrop groups pushed out from the axis as the tower swells
+var _tower_ratio := 1.0            # TowerProfile.ratio at the runner's height
+var _lane_now := TOWER_R + STAIR_W * 0.5
 var _demo_i := 0
 var _demo_gap := 0.0
 var _mouse_demo_dir := Vector2.ZERO   # --anim=mouse: last cursor direction used (for the log)
@@ -315,10 +340,9 @@ func _build_world() -> void:
 	world.lane_radius = TOWER_R + STAIR_W * 0.5
 	add_child(world)
 
-	# ---- tower ----
+	# ---- tower (built per turn by _sync_chunks; the radius follows TowerProfile) ----
 	var circ := TAU * TOWER_R
-	var bricks_around := 22
-	var tower_mat := stone_mat({
+	_tower_mat = stone_mat({
 		"col_lit": Color("36496f"), "col_shadow": Color("05081a"), "brick_size": Vector2(1e6, 1e6), "mortar_ink": 0.0,
 		"detail_amount": 0.9, "detail_tile": Vector2(circ / 6.0, PITCH / 3.0), "detail_ink": 0.36,
 		"noise_period": Vector2(circ / 2.0, PITCH),
@@ -326,41 +350,31 @@ func _build_world() -> void:
 		"warp": 0.0, "brick_shade": 0.0, "rim_amount": 0.8, "band_soft": 0.85, "lit_threshold": 0.05,
 		"tone_light_chance": 0.14, "tone_dark_chance": 0.1,
 	}, 0.07)
-	var tower_mi := add_mesh(world, MeshBuilder.brick_cylinder(TOWER_R, -48.0, 48.0, 22, 0.75, 0.07, 0.16), tower_mat, Vector3.ZERO, Vector3.ZERO, "Tower")
-	var bed_mat := stone_mat({"col_lit": Color("0c1224"), "col_shadow": Color("02040a"), "brick_size": Vector2(1e6, 1e6), "mortar": 0.0, "grime_amount": 0.0, "hi_amount": 0.0, "detail_amount": 0.0, "snow_level": 2.0})
-	add_mesh(world, MeshBuilder.cylinder(TOWER_R - 0.16, -48.0, 48.0, 96), bed_mat, Vector3.ZERO, Vector3.ZERO, "TowerBed")
-	tower_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	_bed_mat = stone_mat({"col_lit": Color("0c1224"), "col_shadow": Color("02040a"), "brick_size": Vector2(1e6, 1e6), "mortar": 0.0, "grime_amount": 0.0, "hi_amount": 0.0, "detail_amount": 0.0, "snow_level": 2.0})
 
-	# ---- stairs ----
-	var stair_mat := stone_mat({
+	# ---- stairs: UV.x per chunk is angle * (R + W) * arcades/8, so the detail and noise tile
+	# counts around must divide the (even) arcade count to close at the chunk seams ----
+	var circ_s := TAU * (TOWER_R + STAIR_W)
+	_stair_mat = stone_mat({
 		"col_lit": STAIR_LIT, "brick_size": Vector2(1e6, 1e6), "mortar": 0.0, "grime_amount": 0.12, "grime_scale": 1.0, "warp": 0.0, "brick_shade": 0.0,
-		"detail_amount": 0.85, "detail_tile": Vector2(TAU * (TOWER_R + STAIR_W) / 10.0, PITCH / 3.0), "detail_ink": 0.36,
-		"brick_period": Vector2(30, PITCH / 0.8), "noise_period": Vector2(TAU * (TOWER_R + STAIR_W) / 3.0, PITCH),
+		"detail_amount": 0.85, "detail_tile": Vector2(circ_s / 12.0, PITCH / 3.0), "detail_ink": 0.36,
+		"brick_period": Vector2(30, PITCH / 0.8), "noise_period": Vector2(circ_s / 4.0, PITCH),
 		"ink_border": 0.04, "snow_level": 0.9, "snow_wobble": 0.22, "hi_amount": 0.0, "band_soft": 0.35,
-		"arcade_enabled": true, "arcade_period": TAU * (TOWER_R + STAIR_W) / PILLARS_PER_TURN,
+		"arcade_enabled": true, "arcade_period": circ_s / PILLARS_PER_TURN,
 		"arcade_width": 4.2, "arcade_height": 1.15, "arcade_round": 0.7, "arcade_band": SLAB_H - SNOW_BAND,
 		"arcade_u_offset": 0.0, "win_frame": 0.12,
 	})
-	add_mesh(world, MeshBuilder.helix_stairs(TOWER_R, STAIR_W, STEPS_PER_TURN, STEP_H, SLAB_H, 6.5, 0, 0, STAIR_GAPS), stair_mat, Vector3.ZERO, Vector3.ZERO, "Stairs")
+	# corbel stubs under the arcade piers (placed per chunk)
+	_cap_mat = stone_mat({"brick_size": Vector2(100, 100), "mortar": 0.0, "grime_amount": 0.0, "ink_border": 0.05, "snow_level": 2.0})
 
-	# ---- corbel stubs under the arcade piers (periodic per turn) ----
-	var cap_mat := stone_mat({"brick_size": Vector2(100, 100), "mortar": 0.0, "grime_amount": 0.0, "ink_border": 0.05, "snow_level": 2.0})
-	var r_out := TOWER_R + STAIR_W
-	var k := STEP_H / (TAU / STEPS_PER_TURN)
-	var da := TAU / STEPS_PER_TURN
-	for t in range(-3, 4):
-		for j in PILLARS_PER_TURN:
-			var a := (t + float(j) / PILLARS_PER_TURN) * TAU
-			if STAIR_GAPS.has(posmod(int(floor(a / da)), STEPS_PER_TURN)):
-				continue
-			var y_top := a * k - SLAB_H + 0.05
-			var pr := r_out - 0.45
-			var pos := Vector3(pr * sin(a), y_top - 0.3, pr * cos(a))
-			add_mesh(world, MeshBuilder.box(Vector3(0.9, 0.55, 0.8)), cap_mat, pos, Vector3(0, a, 0))
+	# ---- hall backdrop: pushed outward with the tower's radius (see _update_backdrop) ----
+	_backdrop = Node3D.new()
+	_backdrop.name = "Backdrop"
+	world.add_child(_backdrop)
 
 	# ---- background wall with window cut-outs ----
 	var wall_circ := TAU * WALL_R
-	var wall_mat := stone_mat({
+	_wall_mat = stone_mat({
 		"col_lit": WALL_LIT, "col_shadow": WALL_SHADOW, "col_hi": Color("3e5586"),
 		"brick_size": Vector2(1e6, 1e6), "mortar": 0.0, "grime_amount": 0.22, "grime_shadow_boost": 0.15, "cracks": 0.0, "grime_scale": 1.0, "warp": 0.0, "brick_shade": 0.0,
 		"detail_amount": 0.85, "detail_tile": Vector2(wall_circ / 32.0, PITCH / 3.0), "detail_ink": 0.36,
@@ -370,32 +384,30 @@ func _build_world() -> void:
 		"win_width": 3.4, "win_straight": 8.2, "win_v_offset": 1.4, "win_frame": 0.16, "tracery": 0.16,
 		"hi_amount": 0.0,
 	})
-	add_mesh(world, MeshBuilder.cylinder(WALL_R, -60.0, 60.0, 180, true, false), wall_mat, Vector3.ZERO, Vector3.ZERO, "Wall")
+	_wall_mi = add_mesh(_backdrop, MeshBuilder.cylinder(WALL_R, -60.0, 60.0, 180, true, false), _wall_mat, Vector3.ZERO, Vector3.ZERO, "Wall")
 
 	# ---- chains (vertical period 1.2 divides the pitch) ----
 	var chain_mat := flat_mat(METAL_LIT, METAL_SHADOW, 0.03)
-	var chain_spots := [[-84.0, 14.0], [-70.0, 18.0], [-120.0, 23.0], [62.0, 15.0], [85.0, 19.0], [110.0, 17.0], [145.0, 22.0], [-150.0, 22.0]]
+	var chain_spots := [[-84.0, 14.6], [-70.0, 18.0], [-120.0, 23.0], [62.0, 15.0], [85.0, 19.0], [110.0, 17.0], [145.0, 22.0], [-150.0, 22.0]]
 	for s in chain_spots:
-		_add_chain(world, polar(s[0], s[1], 0.0), -50.0, 50.0, chain_mat)
+		var at := polar(s[0], s[1], 0.0)
+		_add_chain(_radial_group(_backdrop, at), at, -50.0, 50.0, chain_mat)
 
-	# ---- props that repeat once per turn ----
+	# ---- props that repeat once per turn (the ones on the tower itself live in the chunks) ----
 	for t in range(-2, 3):
 		var dy := t * PITCH
-		_add_bell(world, Vector3(-8.0, 6.2 + dy, 4.0))
-		_add_chandelier(world, Vector3(11.0, -0.5 + dy, 1.5))
-		_add_gallery(world, -62.0, 23.0, 7.5 + dy)
-		_add_gallery(world, 125.0, 23.0, 7.5 - PITCH * 0.5 + dy)
-		_add_wall_stair(world, 100.0, 150.0, 6.0 + dy)
-		_add_arcade(world, -95.0, 3, 4.5 + dy)
-		_add_banner(world, 8.0, 14.0 + dy)
-		# candle clusters on the inner side of a tread (steps 23 and 41 of each turn)
-		for si: int in [30, 56]:
-			var a := (si + 0.5) * TAU / STEPS_PER_TURN
-			var ty := si * STEP_H + dy + 0.02
-			_add_candle_cluster(world, Vector3((TOWER_R + 0.55) * sin(a), ty, (TOWER_R + 0.55) * cos(a)), a)
+		_add_bell(_backdrop, Vector3(-8.0, 6.2 + dy, 4.0))
+		_add_chandelier(_backdrop, Vector3(11.0, -0.5 + dy, 1.5))
+		_add_gallery(_backdrop, -62.0, 23.0, 7.5 + dy)
+		_add_gallery(_backdrop, 125.0, 23.0, 7.5 - PITCH * 0.5 + dy)
+		_add_wall_stair(_backdrop, 100.0, 150.0, 6.0 + dy)
+		_add_arcade(_backdrop, -95.0, 3, 4.5 + dy)
 		# wall sconces
 		for sa: float in [-75.0, 55.0, 170.0]:
-			_add_sconce(world, sa, 9.5 + dy)
+			_add_sconce(_backdrop, sa, 9.5 + dy)
+
+	_sync_chunks()
+	_update_backdrop()
 
 	# ---- distant spires: rotate only ----
 	var spires := Node3D.new()
@@ -423,6 +435,109 @@ func _build_world() -> void:
 	add_mesh(spires, MeshBuilder.cylinder(SPIRE_R_FAR, -40.0, 60.0, 180, true, false, true), far)
 	world.rotate_only = [spires]
 	world.apply_phase()
+
+
+# ---------------------------------------------------------------- tower chunks
+## The tower, its stairs and the props bolted to it are built one turn at a time: absolute
+## turn [n] covers steps n*STEPS_PER_TURN.. and sits at world-local y = (n - current turn) *
+## PITCH, because the radius follows TowerProfile and no longer repeats per pitch. Re-basing on
+## the current turn keeps the screw motion's per-turn snap and the one-floor plunge seamless.
+## The chunks in view are built synchronously (at start); the next one ahead and the spare one
+## below are built on a worker thread a whole turn in advance.
+func _chunk_params() -> Dictionary:
+	return {"pitch": PITCH, "tower_r": TOWER_R, "stair_w": STAIR_W, "spt": STEPS_PER_TURN, "step_h": STEP_H,
+		"slab_h": SLAB_H, "gaps": STAIR_GAPS, "pillars": PILLARS_PER_TURN}
+
+
+func _turn_now() -> int:
+	return int(floor(progress / STEPS_PER_TURN))
+
+
+func _sync_chunks() -> void:
+	var t := _turn_now()
+	for n in _chunks.keys():
+		if n < t - CHUNKS_BELOW or n > t + CHUNKS_ABOVE:
+			_free_chunk(n)
+	# collect a finished background build
+	if _chunk_thread != null and not _chunk_thread.is_alive():
+		var res: Dictionary = _chunk_thread.wait_to_finish()
+		_chunk_thread = null
+		if not _chunks.has(_chunk_building) and _chunk_building >= t - CHUNKS_BELOW and _chunk_building <= t + CHUNKS_ABOVE:
+			_place_chunk(_chunk_building, res)
+	# missing chunks, nearest first: the ones in view right now, the rest in the background
+	for d: int in [0, 1, -1, 2, -2, -3]:
+		var n := t + d
+		if _chunks.has(n) or (_chunk_thread != null and _chunk_building == n):
+			continue
+		var in_view := (d >= -2 and d <= 1) or (d == 2 and world.phase > 0.5)
+		if in_view:
+			_place_chunk(n, TowerProfile.build_chunk(n, _chunk_params()))
+		elif _chunk_thread == null:
+			_chunk_building = n
+			_chunk_thread = Thread.new()
+			_chunk_thread.start(TowerProfile.build_chunk.bind(n, _chunk_params()))
+	for n in _chunks:
+		_chunks[n].position.y = (n - t) * PITCH
+
+
+func _place_chunk(n: int, res: Dictionary) -> void:
+	var c := Node3D.new()
+	c.name = "Chunk%d" % n
+	c.position.y = (n - _turn_now()) * PITCH
+	world.add_child(c)
+	var mi := add_mesh(c, res["tower"], _tower_mat, Vector3.ZERO, Vector3.ZERO, "Tower")
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	add_mesh(c, res["bed"], _bed_mat, Vector3.ZERO, Vector3.ZERO, "TowerBed")
+	add_mesh(c, res["stairs"], _stair_mat, Vector3.ZERO, Vector3.ZERO, "Stairs")
+	var h0 := n * PITCH
+	var da := TAU / STEPS_PER_TURN
+	var k := STEP_H / da
+	# corbel stubs under the arcade piers (as many arches as this chunk's slab carries)
+	var n_c: int = res["n_corbels"]
+	for j in n_c:
+		var a := (n + float(j) / n_c) * TAU
+		if STAIR_GAPS.has(posmod(int(floor(a / da)), STEPS_PER_TURN)):
+			continue
+		var y_top := a * k - h0 - SLAB_H + 0.05
+		var pr := TowerProfile.radius(a * k, TOWER_R) + STAIR_W - 0.45
+		add_mesh(c, MeshBuilder.box(Vector3(0.9, 0.55, 0.8)), _cap_mat, Vector3(pr * sin(a), y_top - 0.3, pr * cos(a)), Vector3(0, a, 0))
+	# candle clusters on the inner side of a tread (steps 30 and 56 of each turn)
+	for si: int in [30, 56]:
+		var a := (si + 0.5) * da
+		var cr := TowerProfile.radius(h0 + si * STEP_H, TOWER_R) + 0.55
+		_add_candle_cluster(c, Vector3(cr * sin(a), si * STEP_H + 0.02, cr * cos(a)), a)
+	_add_banner(c, 8.0, 14.0, TowerProfile.radius(h0 + 11.2, TOWER_R))
+	_chunks[n] = c
+
+
+func _free_chunk(n: int) -> void:
+	var c: Node3D = _chunks[n]
+	_chunks.erase(n)
+	for i in range(_candles.size() - 1, -1, -1):
+		var m: Node3D = _candles[i]
+		if not is_instance_valid(m) or c.is_ancestor_of(m):
+			_candles.remove_at(i)
+	c.queue_free()
+
+
+## The wall scales with the tower's current ratio (its window pattern is drawn in UV units,
+## so the window width is divided back so only the spacing grows) and every prop group slides
+## straight out from the axis by the same ratio, keeping the hall clear of the fat stairs.
+func _update_backdrop() -> void:
+	var s := _tower_ratio
+	_wall_mi.scale = Vector3(s, 1.0, s)
+	_wall_mat.set_shader_parameter("win_width", 3.4 / s)
+	_wall_mat.set_shader_parameter("win_frame", 0.16 / s)
+	_wall_mat.set_shader_parameter("tracery", 0.16 / s)
+	for g in _radial:
+		var an: Vector3 = g.get_meta("anchor")
+		g.position = Vector3(an.x, 0.0, an.z) * (s - 1.0)
+
+
+func _exit_tree() -> void:
+	if _chunk_thread != null:
+		_chunk_thread.wait_to_finish()
+		_chunk_thread = null
 
 
 func _add_chain(parent: Node3D, at: Vector3, y0: float, y1: float, mat: Material) -> void:
@@ -536,18 +651,27 @@ func _add_arcade(parent: Node3D, a_deg: float, count: int, y: float) -> void:
 		add_mesh(parent, MeshBuilder.box(Vector3(seg_len, 1.1, 1.0)), mat, polar(a, r, y + 7.5), Vector3(0, deg_to_rad(a), 0))
 
 
-func _prop_group(parent: Node3D, anchor: Vector3) -> Node3D:
+## Group whose contents are built in world-local coordinates but which [method _update_backdrop]
+## slides straight out from the tower axis as the tower swells, so the hall keeps clear of the
+## stairs without stretching any mesh.
+func _radial_group(parent: Node3D, anchor: Vector3) -> Node3D:
 	var g := Node3D.new()
 	g.set_meta("anchor", anchor)
 	parent.add_child(g)
+	_radial.append(g)
+	return g
+
+
+func _prop_group(parent: Node3D, anchor: Vector3) -> Node3D:
+	var g := _radial_group(parent, anchor)
 	_near_cull.append(g)
 	return g
 
 
-## Red banner with a crest hanging on the tower (one per turn).
-func _add_banner(parent: Node3D, a_deg: float, y_top: float) -> void:
+## Red banner with a crest hanging on the tower (one per turn), at tower radius [tower_r].
+func _add_banner(parent: Node3D, a_deg: float, y_top: float, tower_r := TOWER_R) -> void:
 	var a := deg_to_rad(a_deg)
-	var r := TOWER_R + 0.12
+	var r := tower_r + 0.12
 	var red := flat_mat(Color("8e2f36"), Color("3a1016"), 0.05)
 	var dark := flat_mat(Color("3a1016"), Color("1a0608"), 0.0)
 	var rot := Vector3(0, a, 0)
@@ -804,10 +928,12 @@ func _build_character() -> void:
 	_panel.add_group("ease", "Animation easing", RunnerCharacter.EASE_PRESETS, 0)
 	_panel.add_group("distort", "Lens distortion", ["Off", "Wide barrel", "Dynamic fisheye"], distort_preset)
 	_panel.add_group("draw", "Draw slash (lunge / lift / aim)", RunnerCharacter.DRAW_PRESETS, 1)
+	_panel.add_group("slash", "Sword energy [F4]", RunnerCharacter.SLASH_PRESETS, runner.slash_preset)
+	_panel.add_group("director", "Goblin spawns", ["Legacy packs", "AI director"], 1)
 	_panel.changed.connect(_on_preset_changed)
 	_panel.load_saved()
 	var help := Label.new()
-	help.text = "A/D move (turn back = walk down)   Space jump (x2)   J / LMB draw-slash toward mouse (air ok)   RMB shuriken (3, +1/s)   S/Down + J in air = slam   K/Shift dash   F11 fullscreen   F1-3 cam  1-3 blur  4-6 ease  7-9 lens"
+	help.text = "A/D move   Space jump (x2)   J / LMB slash toward mouse   RMB shuriken   S + J in air = slam   K/Shift dash   F4 sword energy   F11 fullscreen   F1-3 cam  1-3 blur  4-6 ease  7-9 lens"
 	help.add_theme_font_size_override("font_size", 12)
 	help.add_theme_color_override("font_color", Color(0.7, 0.7, 0.85, 0.8))
 	_panel.get_node("PanelContainer/VB").add_child(help)
@@ -820,6 +946,8 @@ func _on_preset_changed(group: String, index: int) -> void:
 		"ease": runner.ease_preset = index
 		"distort": distort_preset = index
 		"draw": runner.set_draw_preset(index)
+		"slash": runner.set_slash_preset(index)
+		"director": director_on = index == 1
 
 
 func _update_hud() -> void:
@@ -843,6 +971,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F1: _panel.set_value("cam", 0)
 			KEY_F2: _panel.set_value("cam", 1)
 			KEY_F3: _panel.set_value("cam", 2)
+			KEY_F4: _panel.set_value("slash", (runner.slash_preset + 1) % RunnerCharacter.SLASH_PRESETS.size())
 			KEY_F11: _toggle_fullscreen()
 			KEY_1: _panel.set_value("blur", 0)
 			KEY_2: _panel.set_value("blur", 1)
@@ -969,6 +1098,13 @@ func _build_combat() -> void:
 	_banner_label.position = Vector2(get_viewport().get_visible_rect().size.x * 0.5 - 160, 120)
 	_banner_label.visible = false
 	layer.add_child(_banner_label)
+	# director readout under the shuriken HUD (state, intensity, beat)
+	_director_label = Label.new()
+	_director_label.add_theme_font_size_override("font_size", 12)
+	_director_label.add_theme_color_override("font_color", Color(0.8, 0.78, 1.0, 0.85))
+	_director_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	_director_label.position = Vector2(get_viewport().get_visible_rect().size.x - 230, 130)
+	layer.add_child(_director_label)
 	# the viewport widens/narrows with the window (stretch aspect "expand"): keep the HUD pinned
 	# to the right edge / centre whenever its size changes (fullscreen toggle, monitor ratio)
 	get_viewport().size_changed.connect(_layout_hud)
@@ -983,6 +1119,8 @@ func _layout_hud() -> void:
 		_shuriken_hud.position = Vector2(w - 230, 76)
 	if _banner_label != null:
 		_banner_label.position = Vector2(w * 0.5 - 160, 120)
+	if _director_label != null:
+		_director_label.position = Vector2(w - 230, 130)
 	runner.action_changed.connect(_on_runner_action)
 	_hb = HitBurstScript.new()
 	add_child(_hb)
@@ -1042,7 +1180,7 @@ func _step_local(k: float, up := 0.0, lateral := 0.0) -> Transform3D:
 	var turn_base: float = floor(progress / STEPS_PER_TURN) * STEPS_PER_TURN
 	var jl: float = k - turn_base                 # local index, may exceed N near the wrap
 	var a: float = (jl + 0.5) * da
-	var lane := TOWER_R + STAIR_W * 0.5 + lateral * STAIR_W * 0.36
+	var lane := TowerProfile.radius(k * STEP_H, TOWER_R) + STAIR_W * 0.5 + lateral * STAIR_W * 0.36
 	# while moving between steps, stand on the lower tread of the two
 	var pos := Vector3(lane * sin(a), floor(jl) * STEP_H + up, lane * cos(a))
 	# face down the stairs (toward the runner): the rig's forward (local -Z) -> -tangent of the
@@ -1054,12 +1192,12 @@ func _spawn_goblin(k: int, kind: String) -> void:
 	_spawn_goblin_at(float(k), kind)
 
 
-func _spawn_goblin_at(k: float, kind: String) -> void:
+func _spawn_goblin_at(k: float, kind: String, lateral := 9.0) -> void:
 	var g: Node3D = GoblinScript.new()
 	g.build(Callable(self, "character_mat"), kind)
 	g.k_abs = k
 	g.size_scale = 1.4 * _rng.randf_range(0.7, 1.3)   # painted model is taller than the old rig; ~1x the runner on screen
-	g.lateral = _rng.randf_range(-1.0, 1.0)
+	g.lateral = _rng.randf_range(-1.0, 1.0) if lateral > 1.0 else lateral
 	g.run_speed = _rng.randf_range(4.2, 6.5)
 	g.charge_dist = _rng.randf_range(11.0, 17.0)
 	g._flail = _rng.randf_range(0.0, TAU)
@@ -1081,9 +1219,12 @@ func _ok_spawn_step(k: int) -> bool:
 
 
 func _update_spawns() -> void:
-	# mobs: packs of 2-5 goblins crammed into 2-4 consecutive steps with random lateral offsets,
-	# packs 8.5-13.5 steps apart, never near a gap. Packs are seeded ahead of the runner; the
-	# ones it walks past stay alive for more than a turn below so turning back meets them again.
+	if director_on:
+		_update_spawns_director()
+		return
+	# legacy mobs: packs of 2-5 goblins crammed into 2-4 consecutive steps with random lateral
+	# offsets, packs 8.5-13.5 steps apart, never near a gap. Packs are seeded ahead of the runner;
+	# the ones it walks past stay alive for more than a turn below so turning back meets them again.
 	while _spawn_next < progress + STEPS_PER_TURN * 1.2:
 		var k := int(round(_spawn_next))
 		if _ok_spawn_step(k) and _ok_spawn_step(k + 3):
@@ -1091,6 +1232,41 @@ func _update_spawns() -> void:
 			_spawn_next += _rng.randf_range(8.5, 13.5)
 		else:
 			_spawn_next += 1.0
+
+
+## Director spawns: one slot per beat, BEAT_SECONDS of climbing apart at the current climb rate
+## (never under 3 steps), so goblins arrive on a tempo instead of in clumps. Each beat carries
+## 0, 1 or an accented pair (side by side on the tread) from the director's bar pattern: the
+## calmer the runner (low intensity), the more beats are filled. Beats that would land near a
+## gap are skipped; the alive cap keeps a slow runner from piling up a wall of goblins.
+func _update_spawns_director() -> void:
+	while _spawn_next < progress + SPAWN_LOOKAHEAD:
+		var k := int(round(_spawn_next))
+		if not (_ok_spawn_step(k) and _ok_spawn_step(k + 1)):
+			_spawn_next += 1.0
+			continue
+		var archer_slot: bool = _director.is_bar_end()
+		var n: int = _director.next_beat()
+		# alive cap counts only the goblins around this stretch (after a floor fall the ones left
+		# a turn above still exist); never stack a beat onto a goblin already standing there
+		var near := 0
+		for g in goblins:
+			var dk: float = g.k_abs - progress
+			if dk > -4.0 and dk < SPAWN_LOOKAHEAD + 4.0:
+				near += 1
+			if abs(g.k_abs - _spawn_next) < 1.5:
+				n = 0
+		if near >= MAX_ALIVE_GOBLINS:
+			n = 0
+		if n >= 2:
+			# accented pair: both sides of the tread, a hair apart along the stairs
+			var side := 1.0 if _rng.randf() < 0.5 else -1.0
+			_spawn_goblin_at(_spawn_next, "melee", side * _rng.randf_range(0.6, 0.9))
+			_spawn_goblin_at(_spawn_next + 0.4, "melee", -side * _rng.randf_range(0.6, 0.9))
+		elif n == 1:
+			var kind := "archer" if (archer_slot and _rng.randf() < 0.6) else "melee"
+			_spawn_goblin_at(_spawn_next, kind)
+		_spawn_next += _director.beat_steps(_climb_rate)
 
 
 func _spawn_pack(k: int) -> void:
@@ -1123,8 +1299,9 @@ func _in_slash(g: Node3D, d: float) -> bool:
 	var origin: Vector3 = runner.global_position + Vector3(0.0, runner.air_height() * runner.scale.y, 0.0)
 	var rel := Vector2((centre.x - origin.x) * runner.facing, centre.y - origin.y)
 	# the helix curves away from the X axis a few steps out: use the step distance along the
-	# stairs for the horizontal part so range is consistent all the way round
-	rel.x = df * 1.19
+	# stairs for the horizontal part so range is consistent all the way round (tread length
+	# at the lane grows with the tower radius)
+	rel.x = df * _lane_now * TAU / STEPS_PER_TURN
 	var dist := rel.length()
 	if dist <= 2.4:
 		return df >= -0.8
@@ -1151,6 +1328,7 @@ const PLUNGE_LEN := 0.62   # length of the runner's "plunge" clip (one-floor fal
 func _hurt_runner() -> void:
 	lives -= 1
 	_hearts.set_lives(max(lives, 0))
+	_director.on_hurt()
 	runner.hurt(1.6)
 	_streak_t = 0.0
 	_shake = 0.25
@@ -1181,11 +1359,12 @@ func _blood_splat(at: Vector3) -> void:
 	# tower surface point: project the kill point radially onto the tower, in world space
 	var local := world.to_local(at)
 	var flat := Vector3(local.x, 0.0, local.z).normalized()
+	var wall_r := TowerProfile.radius(local.y + _turn_now() * PITCH, TOWER_R)
 	var n := _rng.randi_range(3, 6)
 	for i in n:
 		var d := Decal.new()
 		var spread := Vector3(_rng.randf_range(-1.2, 1.2), _rng.randf_range(-0.8, 1.6), 0.0)
-		var p := flat * (TOWER_R + 0.5) + Vector3(0, local.y, 0) + Vector3(flat.z, 0, -flat.x) * spread.x + Vector3.UP * spread.y
+		var p := flat * (wall_r + 0.5) + Vector3(0, local.y, 0) + Vector3(flat.z, 0, -flat.x) * spread.x + Vector3.UP * spread.y
 		d.texture_albedo = _splat_tex()
 		var sz := _rng.randf_range(0.6, 2.2) * (1.6 if i == 0 else 1.0)
 		d.size = Vector3(sz, 1.4, sz)
@@ -1328,6 +1507,7 @@ func _kill_goblin(g: Node3D, heavy := false) -> void:
 	_kill_times = _kill_times.filter(func(tm): return Time.get_ticks_msec() - tm < 350)
 	if _kill_times.size() >= 3:
 		heavy = true          # multi-kill: heavy burst only, no slow motion
+	_director.on_kill(_kill_times.size() >= 3)
 	# 4) star burst (rides along with the biggest chunk) + screen refraction at the hit point
 	_distortion(at, 2.6 if not heavy else 4.2, 0.22 if not heavy else 0.3, 0.8 if not heavy else 1.2)
 	# 5) blood mist + green blood on the tower
@@ -1467,6 +1647,26 @@ func _update_combat(delta: float) -> void:
 		dp -= 1.0
 	progress += dp * STEPS_PER_TURN
 	_last_phase = world.phase
+	# smoothed climb rate (steps / s) for the director's beat spacing; the plunge offset is a
+	# single large negative jump of progress, so only forward motion is measured
+	if delta > 0.0 and dp >= 0.0:
+		_climb_rate = lerp(_climb_rate, dp * STEPS_PER_TURN / delta, min(delta * 3.0, 1.0))
+	# director: a goblin in striking range (or charging right at the runner) or an arrow about
+	# to land counts as threat and keeps the intensity up
+	var threat := false
+	for g in goblins:
+		var dg: float = abs(g.k_abs - progress)
+		if dg <= 4.0 or (dg <= 8.0 and g.state == "charge"):
+			threat = true
+			break
+	if not threat:
+		for ar in arrows:
+			if abs(ar[1] - progress) <= 3.0:
+				threat = true
+				break
+	_director.tick(delta, threat)
+	if _director_label != null:
+		_director_label.text = _director.debug_text() if director_on else "legacy packs"
 	_update_spawns()
 	# goblins
 	for g in goblins.duplicate():
@@ -1577,7 +1777,8 @@ func _update_rays() -> void:
 	var d := -LIGHT_FROM.normalized()
 	for r in _rays:
 		var mi: MeshInstance3D = r[0]
-		var gp: Vector3 = world.to_global(r[1])
+		var an: Vector3 = r[1]
+		var gp: Vector3 = world.to_global(Vector3(an.x * _tower_ratio, an.y, an.z * _tower_ratio))
 		# outward normal of this window after the world rotation
 		var n: Vector3 = world.global_basis * Vector3(sin(r[2]), 0.0, cos(r[2]))
 		# window must sit on the right side of the frame and face the camera-ish
@@ -1772,6 +1973,15 @@ func _process(delta: float) -> void:
 		progress -= STEPS_PER_TURN
 		_spawn_next = min(_spawn_next, progress + 10.0)   # repopulate the floor we fell onto
 	_update_combat(delta)
+	# tower radius at the runner's height (during the plunge: at the height it is falling
+	# through). The lane moves out with it, so the whole world slides back to keep the runner
+	# and the camera framing in place; the hall backdrop follows the tower
+	var h_run := (progress - STEPS_PER_TURN * world.fall_offset / PITCH) * STEP_H
+	_tower_ratio = TowerProfile.ratio(h_run)
+	_lane_now = TOWER_R * _tower_ratio + STAIR_W * 0.5
+	world.position.z = TOWER_R + STAIR_W * 0.5 - _lane_now
+	_sync_chunks()
+	_update_backdrop()
 	# motion blur: its own slow ramp (fades in over ~0.3 s, out over ~0.5 s), very light
 	var bcurve := 0.0
 	if _blur_t >= 0.0:
@@ -1818,13 +2028,14 @@ func _process(delta: float) -> void:
 	_last_step = step_idx
 	# hide background props while they sweep between the camera and the tower
 	for g in _near_cull:
-		var wp: Vector3 = world.to_global(g.get_meta("anchor"))
+		var wp: Vector3 = g.to_global(g.get_meta("anchor"))
 		g.visible = wp.z < NEAR_CULL_Z
 	# holes in the stairs: miss the step -> lose a heart, grab the edge, wait for jump
 	var step_now := posmod(int(floor(world.phase * STEPS_PER_TURN)), STEPS_PER_TURN)
 	if STAIR_GAPS.has(step_now) and runner.is_grounded() and _gap_grace <= 0.0:
 		lives -= 1
 		_hearts.set_lives(max(lives, 0))
+		_director.on_hurt()
 		runner.start_hang()
 		_streak_t = 0.0
 		_shake = 0.2
@@ -1838,7 +2049,8 @@ func _process(delta: float) -> void:
 	# forward (up the stairs = world +X at the runner) and camera direction, in rig-local space
 	var inv := runner.global_basis.inverse()
 	runner.set_frame(inv * Vector3(runner.facing, 0, 0), inv * (cam.global_position - runner.global_position))
-	runner.set_run_speed(speed_mult * momentum)
+	# stride rate follows the ground speed, which grows with the lane radius on fat sections
+	runner.set_run_speed(speed_mult * momentum * _lane_now / (TOWER_R + STAIR_W * 0.5))
 	runner.lean = clamp((speed_mult - 1.0) / (SPEED_MAX - 1.0), 0.0, 1.0)
 	# feet on the current tread; lane radius = middle of the stair width
 	var lane := TOWER_R + STAIR_W * 0.5
@@ -1936,11 +2148,18 @@ func _handle_cmdline() -> void:
 			world.phase = float(a.trim_prefix("--phase="))
 			world.seconds_per_turn = 0.0
 		elif a == "--flatdebug":
-			var m: ShaderMaterial = world.get_node("Tower").material_override
+			var m: ShaderMaterial = _tower_mat
 			for kv in {"brick_size": Vector2(1e6, 1e6), "mortar": 0.0, "grime_amount": 0.0, "tone_light_chance": 0.0,
 					"tone_dark_chance": 0.0, "warp": 0.0, "brick_shade": 0.0, "hi_amount": 0.0, "col_lit": Color("3b527e"), "col_shadow": Color("141c33")}:
 				m.set_shader_parameter(kv, {"brick_size": Vector2(1e6, 1e6), "mortar": 0.0, "grime_amount": 0.0, "tone_light_chance": 0.0,
 					"tone_dark_chance": 0.0, "warp": 0.0, "brick_shade": 0.0, "hi_amount": 0.0, "col_lit": Color("3b527e"), "col_shadow": Color("141c33")}[kv])
+		elif a.begins_with("--turn="):
+			# start the climb at absolute turn N (float): checks the tower profile at a given height
+			progress = float(a.trim_prefix("--turn=")) * STEPS_PER_TURN
+			world.phase = fposmod(progress / STEPS_PER_TURN, 1.0)
+			_last_phase = world.phase
+			_spawn_next = progress + 14.0
+			_sync_chunks()
 		elif a == "--charcam":
 			cam.position = Vector3(3.0, 3.4, 13.0)
 			cam.look_at(Vector3(0.3, 1.2, 6.5), Vector3.UP)
@@ -1956,6 +2175,8 @@ func _handle_cmdline() -> void:
 			_panel.set_value("distort", int(a.trim_prefix("--distort=")))
 		elif a.begins_with("--anim="):
 			_demo_action = a.trim_prefix("--anim=")
+		elif a.begins_with("--slash="):
+			_panel.set_value("slash", clampi(int(a.trim_prefix("--slash=")), 0, RunnerCharacter.SLASH_PRESETS.size() - 1))
 		elif a.begins_with("--aim="):
 			# fixed cursor position (viewport pixels) for verifying the aimed draw slash in captures
 			var xy := a.trim_prefix("--aim=").split(",")
@@ -2018,7 +2239,7 @@ func _take_sequence(dir: String, count: int, every: int) -> void:
 				continue
 			var dp2 := cam.unproject_position(d.global_position)
 			dead += "dead(%.0f,%.0f,vis=%s,sc=%.2f) " % [dp2.x, dp2.y, str(d.visible), d.scale.x]
-		f.store_line("%d,%s,%.0f,%.0f,%.2f,%.5f,%.2f,%.0f,%.2f,%d,%d,%s|%s|%.2f|%d|cursor=%s facing=%d phi=%.0f mouse=%s" % [i, runner.action, sp.x, sp.y, runner.air_height(), world.phase, runner.parts["Hips"].position.x, arc_x, arc_face, lives, arrows.size(), gob, dead, Engine.time_scale, _splats.size(), str(_mouse_demo_dir), int(runner.facing), rad_to_deg(runner.attack_phi), str(get_viewport().get_mouse_position().round())])
+		f.store_line("%d,%s,%.0f,%.0f,%.2f,%.5f,%.2f,%.0f,%.2f,%d,%d,%s|%s|%.2f|%d|cursor=%s facing=%d phi=%.0f mouse=%s|dir=%s" % [i, runner.action, sp.x, sp.y, runner.air_height(), world.phase, runner.parts["Hips"].position.x, arc_x, arc_face, lives, arrows.size(), gob, dead, Engine.time_scale, _splats.size(), str(_mouse_demo_dir), int(runner.facing), rad_to_deg(runner.attack_phi), str(get_viewport().get_mouse_position().round()), _director.debug_text()])
 		f.close()
 	print("saved sequence: ", count, " frames to ", dir)
 	get_tree().quit()

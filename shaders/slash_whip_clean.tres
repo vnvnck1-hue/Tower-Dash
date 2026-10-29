@@ -1,0 +1,15 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://shaders/slash_whip_visual.tres" id="1"]
+
+[resource]
+resource_name = "Clean Blade - calmer currents, few tears"
+shader = ExtResource("1")
+shader_parameter/life = 0.22
+shader_parameter/flow_age = 0.04
+shader_parameter/flow_speed = 3.6
+shader_parameter/streak_strength = 0.7
+shader_parameter/tear_strength = 0.35
+shader_parameter/shape_motion = 0.03
+shader_parameter/reveal_speed = 3.2
+shader_parameter/stretch = 0.08

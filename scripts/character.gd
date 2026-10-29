@@ -59,6 +59,24 @@ var _trail: MeshInstance3D
 var _trail_mat: ShaderMaterial
 var _trail_spawn := -1.0
 var _trail_len := 0.0
+var _slash_phase := 0.0
+const SLASH_PRESETS := ["Blade Flow", "Layered Surge", "Ripped Torrent", "Whip Clean", "Whip Surge", "Whip Torrent"]
+const SLASH_MATERIALS := [preload("res://shaders/slash_blade_flow.tres"), preload("res://shaders/slash_material.tres"), preload("res://shaders/slash_ripped_torrent.tres"), preload("res://shaders/slash_whip_clean.tres"), preload("res://shaders/slash_whip_surge.tres"), preload("res://shaders/slash_whip_torrent.tres")]
+var slash_preset := 1
+## Presets from WHIP_FIRST on use shaders/slash_whip_visual.tres (crescent drawn in from the tail,
+## two advected currents, moving tears) with their own crescent geometry; earlier presets keep the
+## closed support ring of TRAILS. Rebuild: node tools/build_slash_whip_textures.js, then
+## bash tools/godot.sh --headless --script tools/build_slash_whip_shader.gd
+const WHIP_FIRST := 3
+const WHIP_PARAMS := ["flow_speed", "streak_strength", "tear_strength", "shape_motion", "reveal_speed", "stretch"]
+# same layout as TRAILS: [a0, a1, r_in, r_out, centre_forward, centre_up, sweep, spawn_t, life]
+const WHIP_TRAILS := {
+	"attack":     [-95.0, 135.0, 1.25, 3.75, 0.4, 1.9, 1.0, 0.0, 0.22],
+	"attack2":    [-90.0, 140.0, 1.3, 3.9, 0.5, 1.85, 1.0, 0.0, 0.22],
+	"attack3":    [-95.0, 135.0, 1.3, 4.0, 0.45, 1.85, -1.0, 0.0, 0.22],
+	"air_attack": [-95.0, 135.0, 1.25, 3.75, 0.4, 1.65, 1.0, 0.0, 0.22],
+	"slam":       [-100.0, 150.0, 1.3, 3.9, 0.35, 1.3, 1.0, 0.30, 0.28],
+}
 var _ribbon: MeshInstance3D
 var _ribbon_mesh: ImmediateMesh
 var _ribbon_pts: Array = []
@@ -79,11 +97,11 @@ var slash_normal := Vector3(0, 0, 1)
 # slash VFX per attack: [a0, a1, r_in, r_out, centre_forward, centre_up, sweep (1 = top->bottom, -1 = bottom->top), spawn_t, life]
 # angle 90 = straight ahead; the arc always passes through the front.
 const TRAILS := {
-	"attack":     [10.0, 170.0, 0.8, 4.8, 1.6, 1.5, 1.0, 0.0, 0.24],
-	"attack2":    [10.0, 170.0, 0.8, 5.0, 1.7, 1.35, 1.0, 0.0, 0.24],
-	"attack3":    [10.0, 170.0, 0.8, 5.0, 1.7, 1.35, -1.0, 0.0, 0.24],
-	"air_attack": [15.0, 165.0, 0.8, 4.8, 1.7, 1.1, 1.0, 0.0, 0.24],
-	"slam":       [-20.0, 200.0, 0.6, 4.2, 0.9, 0.2, 1.0, 0.30, 0.36],
+	"attack":     [-150.0, 210.0, 2.7, 4.4, 0.65, 0.75, 1.0, 0.0, 0.19],
+	"attack2":    [-150.0, 210.0, 2.8, 4.5, 0.75, 0.70, 1.0, 0.0, 0.19],
+	"attack3":    [-150.0, 210.0, 2.2, 3.9, 0.45, 1.85, -1.0, 0.0, 0.19],
+	"air_attack": [-150.0, 210.0, 2.7, 4.4, 0.65, 0.55, 1.0, 0.0, 0.19],
+	"slam":       [-150.0, 210.0, 2.5, 4.3, 0.45, 0.70, 1.0, 0.30, 0.26],
 }
 ## Katana-Zero style draw-slash: the attack is also a short leap toward the mouse. Screen
 ## direction from the runner to the cursor -> forward lunge impulse (always some) plus an upward
@@ -120,6 +138,26 @@ var AIM_MAX := deg_to_rad(85.0)
 func set_frame(forward_local: Vector3, to_camera_local: Vector3) -> void:
 	fwd = forward_local.normalized()
 	cam_dir = to_camera_local.normalized()
+
+
+func set_slash_preset(index: int) -> void:
+	slash_preset = clampi(index, 0, SLASH_PRESETS.size() - 1)
+	if _trail_mat == null:
+		return
+	var source: ShaderMaterial = SLASH_MATERIALS[slash_preset]
+	if _trail_mat.shader != source.shader:
+		# Other shader family (whip presets): swap the whole material instead of copying parameters.
+		_trail_mat = source.duplicate()
+		if _trail != null:
+			_trail.material_override = _trail_mat
+		return
+	var names: Array = WHIP_PARAMS if is_whip_preset() else ["flow_speed", "layer_strength", "blade_width", "blade_length", "tear_strength", "volume_strength"]
+	for parameter in names:
+		_trail_mat.set_shader_parameter(parameter, source.get_shader_parameter(parameter))
+
+
+func is_whip_preset() -> bool:
+	return slash_preset >= WHIP_FIRST
 
 
 ## Turn to face up (+1) or down (-1) the stairs; the rig's local -Z is its front.
@@ -192,8 +230,8 @@ func build(mat_factory: Callable) -> void:
 
 	_trail = MeshInstance3D.new()
 	_trail.name = "Trail"
-	_trail_mat = ShaderMaterial.new()
-	_trail_mat.shader = preload("res://shaders/slash_trail.gdshader")
+	_trail_mat = preload("res://shaders/slash_material.tres").duplicate()
+	set_slash_preset(slash_preset)
 	_trail.material_override = _trail_mat
 	_trail.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_trail.visible = false
@@ -684,20 +722,26 @@ func _start_slash(name_: String, phi := 0.0) -> void:
 	if not TRAILS.has(name_):
 		_trail_spawn = -1.0
 		return
-	var p: Array = TRAILS[name_]
+	var p: Array = WHIP_TRAILS[name_] if is_whip_preset() and WHIP_TRAILS.has(name_) else TRAILS[name_]
 	# plane: v = forward (angle 90), u = up/down tilted 30% toward the camera -> normal faces the camera
 	var up_local: Vector3 = (Vector3.UP * p[6] + cam_dir * 0.3).normalized()
 	var v_axis := fwd
 	var u_axis: Vector3 = (up_local - v_axis * up_local.dot(v_axis)).normalized()
 	# crescent angle 0 = u (up for sweep +1), 90 = forward; aiming up by phi shifts the arc by -phi
 	var shift: float = -rad_to_deg(phi) * p[6]
-	_trail.mesh = MeshBuilder.crescent(p[0] + shift, p[1] + shift, p[2], p[3], u_axis, v_axis, 28)
+	# Closed ring is only invisible support. Moving oval fields make all visible tips and edges.
+	# Extra support behind the sweep prevents a travelling tip being clipped into a square.
+	_trail.mesh = MeshBuilder.crescent(p[0] + shift, p[1] + shift, p[2], p[3], u_axis, v_axis, 160)
 	slash_normal = u_axis.cross(v_axis).normalized()   # Root-local plane normal, for verification
 	# arc centre swings with the aim; the vertical part is halved so a steep cut stays anchored
 	# at the shoulders instead of floating above the head
 	_trail.position = fwd * cos(phi) * p[4] + Vector3.UP * (p[5] + sin(phi) * p[4] * 0.5)
 	_trail_spawn = p[7]
 	_trail_len = p[8]
+	_trail_mat.set_shader_parameter("life", 0.0)
+	_trail_mat.set_shader_parameter("flow_age", 0.0)
+	_slash_phase = fposmod(_slash_phase + 0.173, 1.0)
+	_trail_mat.set_shader_parameter("flow_phase", _slash_phase)
 	_trail.visible = false
 
 
@@ -1007,6 +1051,8 @@ func _process(delta: float) -> void:
 			else:
 				_trail.visible = true
 				_trail_mat.set_shader_parameter("life", life)
+				# Attack-local seconds: currents stop with hitstop, restart cleanly on each swing.
+				_trail_mat.set_shader_parameter("flow_age", _t - _trail_spawn)
 	elif _trail.visible:
 		_trail.visible = false
 	_update_ribbon(delta)
@@ -1021,6 +1067,9 @@ func _update_ribbon(delta: float) -> void:
 		while _ribbon_pts.size() > RIBBON_LEN:
 			_ribbon_pts.pop_front()
 	_ribbon_mesh.clear_surfaces()
+	# The authored crescent owns the attack silhouette; a second sampled ribbon muddies it.
+	if _trail.visible:
+		return
 	if _ribbon_pts.size() < 2:
 		return
 	var travel := 0.0

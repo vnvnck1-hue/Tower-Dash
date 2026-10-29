@@ -126,9 +126,9 @@ static func crescent(a0_deg: float, a1_deg: float, r_in: float, r_out: float, u_
 		var ang1 := deg_to_rad(lerpf(a0_deg, a1_deg, t1))
 		var d0 := u_axis * cos(ang0) + v_axis * sin(ang0)
 		var d1 := u_axis * cos(ang1) + v_axis * sin(ang1)
-		# inner radius grows a little toward the leading edge (blade tip travels furthest)
-		var ri0 := lerpf(r_out * 0.97, r_in, t0)
-		var ri1 := lerpf(r_out * 0.97, r_in, t1)
+		# Visible width/tips come from moving oval fields in VisualShader. This is support only.
+		var ri0 := r_in
+		var ri1 := r_in
 		var pts := [d0 * ri0, d1 * ri1, d1 * r_out, d0 * r_out]
 		var uvs := [Vector2(t0, 0), Vector2(t1, 0), Vector2(t1, 1), Vector2(t0, 1)]
 		var uv2 := [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]
@@ -192,6 +192,151 @@ static func brick_cylinder(r: float, y0: float, y1: float, bricks_around: int, b
 				[Vector2(0, by0), Vector2(depth, by0), Vector2(depth, by1), Vector2(0, by1)], uv2, [cw, cw, cw, cw])
 			quad(st, [_p(a1, r_bed, by0), _p(a1, rf, by0), _p(a1, rf, by1), _p(a1, r_bed, by1)], _tangent(a1),
 				[Vector2(0, by0), Vector2(depth, by0), Vector2(depth, by1), Vector2(0, by1)], uv2, [cw, cw, cw, cw])
+	return st.commit()
+
+
+## Cylinder whose radius follows [r_fn] (mesh y -> radius), split into rows [row_h] tall so
+## the profile reads as a smooth curve. Outward smooth normals.
+static func cylinder_var(r_fn: Callable, y0: float, y1: float, segs: int, row_h: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rows: int = max(1, int(ceil((y1 - y0) / row_h)))
+	for row in rows:
+		var ya := y0 + (y1 - y0) * float(row) / rows
+		var yb := y0 + (y1 - y0) * float(row + 1) / rows
+		var ra: float = r_fn.call(ya)
+		var rb: float = r_fn.call(yb)
+		for i in segs:
+			var a0 := TAU * float(i) / segs
+			var a1 := TAU * float(i + 1) / segs
+			var am := (a0 + a1) * 0.5
+			var n0 := Vector3(sin(a0), 0, cos(a0))
+			var n1 := Vector3(sin(a1), 0, cos(a1))
+			var nm := Vector3(sin(am), 0, cos(am))
+			var pts := [_p(a0, ra, ya), _p(a1, ra, ya), _p(a1, rb, yb), _p(a0, rb, yb)]
+			var uvs := [Vector2(a0 * ra, ya), Vector2(a1 * ra, ya), Vector2(a1 * rb, yb), Vector2(a0 * rb, yb)]
+			var uv2 := [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]
+			var c := Color((a1 - a0) * ra, yb - ya, 0.0, 1.0)
+			quad(st, pts, nm, uvs, uv2, [c, c, c, c], [n0, n1, n1, n0])
+	return st.commit()
+
+
+## [method brick_cylinder] with a radius that follows [r_fn] (mesh y -> radius). Bricks keep
+## about [brick_w] of arc, so fatter rows simply get more bricks, and the rows' corner radii
+## come from the profile at their own heights so the wall curves smoothly. UV.x is the arc
+## length with its seam at the back of the tower (angle +-PI), where the camera never looks,
+## because the tiling count around no longer stays an integer.
+static func brick_cylinder_var(r_fn: Callable, y0: float, y1: float, brick_w: float, brick_h: float, gap: float, depth: float, seed: int = 3) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	var rows := int(round((y1 - y0) / brick_h))
+	var uv2 := [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]
+	for row in rows:
+		var by0 := y0 + row * brick_h + gap * 0.5
+		var by1 := y0 + (row + 1) * brick_h - gap * 0.5
+		var r: float = r_fn.call((by0 + by1) * 0.5)
+		var r0: float = r_fn.call(by0)
+		var r1: float = r_fn.call(by1)
+		var da := brick_w / r
+		var ga := gap / r
+		var offs := rng.randf_range(0.0, da)
+		var widths := []
+		var total := 0.0
+		while total < TAU - da * 0.5:
+			var w := da * rng.randf_range(0.6, 1.5)
+			widths.append(w)
+			total += w
+		var k := TAU / total
+		var a := offs
+		for wi in widths.size():
+			var w: float = widths[wi] * k
+			var a0 := a + ga * 0.5
+			var a1 := a + w - ga * 0.5
+			a += w
+			var inset := rng.randf_range(-depth * 0.5, depth * 0.55)
+			var am := (a0 + a1) * 0.5
+			var ua := -TAU * roundf(am / TAU)         # per-brick wrap: the UV seam lands at the back
+			var c := Color((a1 - a0) * r, by1 - by0, 0.0, 1.0)
+			for seg in [[a0, am], [am, a1]]:
+				var s0: float = seg[0]
+				var s1: float = seg[1]
+				var sm := (s0 + s1) * 0.5
+				var pts := [_p(s0, r0 - inset, by0), _p(s1, r0 - inset, by0), _p(s1, r1 - inset, by1), _p(s0, r1 - inset, by1)]
+				var uvs := [Vector2((s0 + ua) * r, by0), Vector2((s1 + ua) * r, by0), Vector2((s1 + ua) * r, by1), Vector2((s0 + ua) * r, by1)]
+				var u2 := [Vector2(0.0 if s0 == a0 else 0.5, 0), Vector2(0.5 if s0 == a0 else 1.0, 0), Vector2(0.5 if s0 == a0 else 1.0, 1), Vector2(0.0 if s0 == a0 else 0.5, 1)]
+				quad(st, pts, Vector3(sin(sm), 0, cos(sm)), uvs, u2, [c, c, c, c])
+			var cw := Color(gap, by1 - by0, 0.0, 1.0)
+			var u0 := (a0 + ua) * r
+			var u1 := (a1 + ua) * r
+			quad(st, [_p(a0, r0 - depth, by0), _p(a1, r0 - depth, by0), _p(a1, r0 - inset, by0), _p(a0, r0 - inset, by0)], Vector3.DOWN,
+				[Vector2(u0, 0), Vector2(u1, 0), Vector2(u1, depth), Vector2(u0, depth)], uv2, [cw, cw, cw, cw])
+			quad(st, [_p(a0, r1 - depth, by1), _p(a1, r1 - depth, by1), _p(a1, r1 - inset, by1), _p(a0, r1 - inset, by1)], Vector3.UP,
+				[Vector2(u0, 0), Vector2(u1, 0), Vector2(u1, depth), Vector2(u0, depth)], uv2, [cw, cw, cw, cw])
+			quad(st, [_p(a0, r0 - depth, by0), _p(a0, r0 - inset, by0), _p(a0, r1 - inset, by1), _p(a0, r1 - depth, by1)], -_tangent(a0),
+				[Vector2(0, by0), Vector2(depth, by0), Vector2(depth, by1), Vector2(0, by1)], uv2, [cw, cw, cw, cw])
+			quad(st, [_p(a1, r0 - depth, by0), _p(a1, r0 - inset, by0), _p(a1, r1 - inset, by1), _p(a1, r1 - depth, by1)], _tangent(a1),
+				[Vector2(0, by0), Vector2(depth, by0), Vector2(depth, by1), Vector2(0, by1)], uv2, [cw, cw, cw, cw])
+	return st.commit()
+
+
+## [method helix_stairs] whose inner radius follows [r_fn] (mesh y -> radius), evaluated along
+## the helix so the slab's outer face is one smooth spiral surface (no ledge per step).
+## Steps [first_step]..[last_step] are absolute indices; mesh y = index * step_h - [y_base].
+## UV.x = angle * [u_r] (a nominal outer radius chosen per chunk by the caller so the arcade
+## pattern closes at the chunk seams).
+static func helix_stairs_var(r_fn: Callable, width: float, steps_per_turn: int, step_h: float, slab_h: float, first_step: int, last_step: int, gaps: Array, y_base: float, u_r: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var da := TAU / steps_per_turn
+	var k := step_h / da
+	var snow_band := 0.9
+	var tuv2 := [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]
+	for i in range(first_step, last_step):
+		if gaps.has(posmod(i, steps_per_turn)):
+			continue
+		var a0 := i * da
+		var a1 := (i + 1) * da
+		var am := (a0 + a1) * 0.5
+		var yt := i * step_h - y_base
+		var yb0 := a0 * k - slab_h - y_base
+		var yb1 := a1 * k - slab_h - y_base
+		var ri0: float = r_fn.call(a0 * k - y_base)
+		var ri1: float = r_fn.call(a1 * k - y_base)
+		var ro0 := ri0 + width
+		var ro1 := ri1 + width
+		var w_out := da * (ro0 + ro1) * 0.5
+		var u0 := a0 * u_r
+		var u1 := a1 * u_r
+		# --- tread ---
+		var tp := [_p(a0, ri0, yt), _p(a1, ri1, yt), _p(a1, ro1, yt), _p(a0, ro0, yt)]
+		var tuv := [Vector2(u0, ri0), Vector2(u1, ri0), Vector2(u1, ro0), Vector2(u0, ro0)]
+		var tc := [Color(w_out, width, 0.0), Color(w_out, width, 0.0), Color(w_out, width, 1.0), Color(w_out, width, 1.0)]
+		quad(st, tp, Vector3.UP, tuv, tuv2, tc)
+		# --- riser (at a0, faces the descending direction) ---
+		var rn := -_tangent(a0)
+		var rp := [_p(a0, ri0, yt - step_h), _p(a0, ro0, yt - step_h), _p(a0, ro0, yt), _p(a0, ri0, yt)]
+		var ruv := [Vector2(ri0, yt - step_h), Vector2(ro0, yt - step_h), Vector2(ro0, yt), Vector2(ri0, yt)]
+		var rc := Color(width, step_h, 0.0)
+		quad(st, rp, rn, ruv, tuv2, [rc, rc, rc, rc])
+		# --- outer face: top snow strip + body ---
+		var on := Vector3(sin(am), 0, cos(am))
+		var ys := yt - snow_band
+		var op := [_p(a0, ro0, ys), _p(a1, ro1, ys), _p(a1, ro1, yt), _p(a0, ro0, yt)]
+		var ouv := [Vector2(u0, ys), Vector2(u1, ys), Vector2(u1, yt), Vector2(u0, yt)]
+		var oc := [Color(w_out, snow_band, 0.0), Color(w_out, snow_band, 0.0), Color(w_out, snow_band, 1.0), Color(w_out, snow_band, 1.0)]
+		quad(st, op, on, ouv, tuv2, oc)
+		var bp := [_p(a0, ro0, yb0), _p(a1, ro1, yb1), _p(a1, ro1, ys), _p(a0, ro0, ys)]
+		var buv := [Vector2(u0, yb0), Vector2(u1, yb1), Vector2(u1, ys), Vector2(u0, ys)]
+		var bc0 := Color(w_out, slab_h - snow_band, 0.0, 0.0)
+		var bc1 := Color(w_out, slab_h - snow_band, 0.0, 1.0)
+		quad(st, bp, on, buv, tuv2, [bc0, bc0, bc1, bc1])
+		# --- bottom (sloping) ---
+		var btp := [_p(a0, ri0, yb0), _p(a1, ri1, yb1), _p(a1, ro1, yb1), _p(a0, ro0, yb0)]
+		var btuv := [Vector2(u0, ri0), Vector2(u1, ri0), Vector2(u1, ro0), Vector2(u0, ro0)]
+		var btc := Color(w_out, width, 0.0)
+		quad(st, btp, Vector3.DOWN, btuv, tuv2, [btc, btc, btc, btc])
 	return st.commit()
 
 
